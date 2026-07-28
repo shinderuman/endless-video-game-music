@@ -72,3 +72,27 @@ def test_music_refresh_shows_loading_state_and_disables_button() -> None:
     assert ".quiet-button.loading::before" in stylesheet
     assert ".quiet-button:disabled" in stylesheet
     assert "cursor: not-allowed" in stylesheet
+
+
+def test_loop_candidates_include_zero_start_without_changing_default() -> None:
+    script = static_asset("app.js")
+
+    assert "analysis.candidates = withHeadLoopCandidate" in script
+    assert "loopStartSeconds: 0" in script
+    assert "isHeadLoop: true" in script
+    assert "state.candidateIndex = scoredCandidates.length > 0 ? 1 : 0" in script
+    assert "candidate.isHeadLoop ? 0 : state.candidateIndex" in script
+
+
+def test_library_selection_and_searches_are_restored_without_autoplay() -> None:
+    script = static_asset("app.js")
+
+    assert 'const LIBRARY_STATE_STORAGE_KEY = "endless-vgm-library-state"' in script
+    assert "restoreLibraryState();" in script
+    assert "playlist: state.currentPlaylist" in script
+    assert "albumId: state.currentAlbumId" in script
+    assert "trackId: state.currentTrackId" in script
+    assert "playlistSearch: elements.playlistSearch.value" in script
+    assert "albumSearch: elements.albumSearch.value" in script
+    assert "trackSearch: elements.trackSearch.value" in script
+    assert "await selectTrack(restoredTrack.id, false)" in script
