@@ -264,7 +264,7 @@ const loadPlaylists = async () => {
 };
 
 const refreshLibrary = async () => {
-  elements.refreshLibrary.disabled = true;
+  setLibraryLoading(true);
   elements.serverMessage.textContent = "Music.appを読み込み中";
   try {
     await api("/api/library/refresh", {method: "POST"});
@@ -273,8 +273,15 @@ const refreshLibrary = async () => {
   } catch (error) {
     elements.serverMessage.textContent = `再読込失敗: ${error.message}`;
   } finally {
-    elements.refreshLibrary.disabled = false;
+    setLibraryLoading(false);
   }
+};
+
+const setLibraryLoading = (loading) => {
+  elements.refreshLibrary.disabled = loading;
+  elements.refreshLibrary.classList.toggle("loading", loading);
+  elements.refreshLibrary.setAttribute("aria-busy", String(loading));
+  elements.refreshLibrary.textContent = loading ? "読み込み中" : "Musicを再読込";
 };
 
 const renderPlaylists = () => {

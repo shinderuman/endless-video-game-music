@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import subprocess
 
+import pytest
+
 from endless_vgm.library import MusicLibrary
 
 
@@ -209,3 +211,18 @@ def test_refresh_runs_export_and_replaces_cache(tmp_path) -> None:
     assert calls == [["osascript", "-l", "JavaScript", str(tmp_path / "export.js")]]
     assert cache.is_file()
     assert library.playlist("GAME") is not None
+
+
+def test_refresh_reports_music_export_error(tmp_path) -> None:
+    def runner(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 1, "", "Music access denied")
+
+    library = MusicLibrary(
+        tmp_path / "library.json",
+        tmp_path / "export.js",
+        fallback_cache_path=tmp_path / "none",
+        command_runner=runner,
+    )
+
+    with pytest.raises(RuntimeError, match="Music access denied"):
+        library.refresh()

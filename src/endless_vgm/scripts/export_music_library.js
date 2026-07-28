@@ -38,8 +38,10 @@ const waitForPlaylists = (app) => {
 const waitForLibraryPlaylist = (app) => {
   for (let elapsed = 0; elapsed < 60; elapsed += 1) {
     try {
-      const playlists = app.libraryPlaylists();
-      if (playlists.length > 0) return playlists[0];
+      for (const source of app.sources()) {
+        const playlists = source.libraryPlaylists();
+        if (playlists.length > 0) return playlists[0];
+      }
     } catch (error) {
       // Music.appが起動処理中の場合は待機する。
     }

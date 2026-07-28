@@ -59,11 +59,22 @@ class MusicLibrary:
     def refresh(self) -> None:
         result = self.command_runner(
             ["osascript", "-l", "JavaScript", str(self.export_script)],
-            check=True,
+            check=False,
             capture_output=True,
             text=True,
             timeout=3600,
         )
+        if result.returncode != 0:
+            stdout = result.stdout.strip()
+            stderr = result.stderr.strip()
+            LOGGER.error(
+                "Music.app export failed with exit code %d\nstdout: %s\nstderr: %s",
+                result.returncode,
+                stdout,
+                stderr,
+            )
+            detail = stderr or stdout or f"osascript exited with code {result.returncode}"
+            raise RuntimeError(detail)
         payload = json.loads(result.stdout)
         self._replace_from_payload(payload)
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)

@@ -30,6 +30,11 @@ def player_markup() -> MarkupCollector:
     return collector
 
 
+def static_asset(name: str) -> str:
+    package_dir = Path(endless_vgm.__file__).parent
+    return (package_dir / "static" / name).read_text(encoding="utf-8")
+
+
 def test_player_has_four_panes() -> None:
     markup = player_markup()
 
@@ -54,3 +59,16 @@ def test_player_has_full_track_seek_control() -> None:
 
     assert markup.elements["seek-bar"]["type"] == "range"
     assert {"current-time", "total-time"} <= markup.elements.keys()
+
+
+def test_music_refresh_shows_loading_state_and_disables_button() -> None:
+    script = static_asset("app.js")
+    stylesheet = static_asset("styles.css")
+
+    assert "setLibraryLoading(true)" in script
+    assert "setLibraryLoading(false)" in script
+    assert "elements.refreshLibrary.disabled = loading" in script
+    assert '"読み込み中"' in script
+    assert ".quiet-button.loading::before" in stylesheet
+    assert ".quiet-button:disabled" in stylesheet
+    assert "cursor: not-allowed" in stylesheet
