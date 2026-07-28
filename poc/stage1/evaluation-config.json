@@ -1,0 +1,96 @@
+{
+  "seed": 20260728,
+  "outputPlaylist": "STAGE1_CURATED",
+  "groups": [
+    {
+      "id": "既知ループ候補: ロマンシング サガ2",
+      "sourcePlaylist": "GAME",
+      "albums": [
+        "Romancing Sa・Ga2 ORIGINAL SOUND VERSION"
+      ],
+      "sampleSize": 5,
+      "defaultLabel": null
+    },
+    {
+      "id": "既知ループ候補: ロマンシング サガ3",
+      "sourcePlaylist": "GAME",
+      "albums": [
+        "Romancing Sa・Ga3 ORIGINAL SOUND VERSION [Disc 1]",
+        "Romancing Sa・Ga3 ORIGINAL SOUND VERSION [Disc 2]",
+        "Romancing Sa・Ga3 ORIGINAL SOUND VERSION [Disc 3]"
+      ],
+      "sampleSize": 5,
+      "defaultLabel": null
+    },
+    {
+      "id": "既知ループ候補: クロノ・トリガー",
+      "sourcePlaylist": "GAME",
+      "albums": [
+        "CHRONO TRIGGER Original Sound Version [Disc 1]",
+        "CHRONO TRIGGER Original Sound Version [Disc 2]",
+        "CHRONO TRIGGER Original Sound Version [Disc 3]"
+      ],
+      "sampleSize": 5,
+      "defaultLabel": null
+    },
+    {
+      "id": "既知ループ候補: ファイナルファンタジーIV",
+      "sourcePlaylist": "GAME",
+      "albums": [
+        "ファイナルファンタジーIV オリジナル・サウンド・ヴァージョン"
+      ],
+      "sampleSize": 5,
+      "defaultLabel": null
+    },
+    {
+      "id": "既知ループ候補: ファイナルファンタジーV",
+      "sourcePlaylist": "GAME",
+      "albums": [
+        "ファイナルファンタジーV オリジナル・サウンド・ヴァージョン [Disc 1]",
+        "ファイナルファンタジーV オリジナル・サウンド・ヴァージョン [Disc 2]"
+      ],
+      "sampleSize": 5,
+      "defaultLabel": null
+    },
+    {
+      "id": "既知ループ候補: ファイナルファンタジーVI",
+      "sourcePlaylist": "GAME",
+      "albums": [
+        "ファイナルファンタジーVI オリジナル・サウンド・ヴァージョン [Disc 1]",
+        "FINAL FANTASY VI オリジナル・サウンド・バージョン [Disc 2]",
+        "Final Fantasy VI-Original Sound Version [Disc 3]"
+      ],
+      "sampleSize": 5,
+      "defaultLabel": null
+    },
+    {
+      "id": "既知ループ候補: ファイナルファンタジーVII",
+      "sourcePlaylist": "GAME",
+      "albums": [
+        "FINAL FANTASY VII Original Sound Track [Disc 1]",
+        "FINAL FANTASY VII Original Sound Track [Disc 2]",
+        "FINAL FANTASY VII Original Sound Track [Disc 3]",
+        "FINAL FANTASY VII Original Sound Track [Disc 4]"
+      ],
+      "sampleSize": 5,
+      "defaultLabel": null
+    },
+    {
+      "id": "既知ループ候補: デビルサマナー ソウルハッカーズ",
+      "sourcePlaylist": "GAME",
+      "albums": [
+        "デビルサマナー ソウルハッカーズ オリジナル・サウンドトラック [Disc 1]",
+        "デビルサマナー ソウルハッカーズ オリジナル・サウンドトラック [Disc 2]"
+      ],
+      "sampleSize": 5,
+      "defaultLabel": null
+    },
+    {
+      "id": "既知非ループ: 東映マンガ祭り",
+      "sourcePlaylist": "東映マンガ祭り",
+      "albums": [],
+      "sampleSize": 20,
+      "defaultLabel": "non_loop"
+    }
+  ]
+}

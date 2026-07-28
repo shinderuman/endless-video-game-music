@@ -41,7 +41,7 @@ Stage 0完了後、次を`POC_RESULTS.md`へ記入し、利用者へ報告して
 - OS、CPU、利用可能ディスク容量
 - Python、uv、PyMusicLooper、ffmpeg、ffprobeの状態とバージョン
 - `pymusiclooper`および`export-points`の実ヘルプ確認結果
-- Android SDK、ADB、エミュレーター、Chrome、Edgeの状態
+- Android SDK、ADB、エミュレーター、Chromeの状態
 - `~/src/music-bridge`の存在、Git状態、関連テスト、既存エミュレーター資産
 - PoC実施を妨げる不足
 - Stage 1へ進めるか

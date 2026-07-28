@@ -5,7 +5,7 @@
 - プロジェクト表示名: `Endless Video Game Music`
 - GitHubリポジトリ名: `endless-video-game-music`
 - 製品CLIコマンド名: `vgm`
-- 現在の状態: **要件・設計確定済み、PoC未実施、製品実装禁止**
+- 現在の状態: **Stage 0完了、Stage 1利用者判定待ち、製品実装禁止**
 
 ## 最終的に作るもの
 
@@ -17,7 +17,8 @@
    - 製品コマンドは `vgm generate`
 
 2. **静的HTMLプレイヤー**
-   - macOSとAndroidのChrome・Edgeに対応する
+   - macOSとAndroidのChromeを必須対応・検証対象とする
+   - Edgeでも互換動作する実装を目指すが、Edge実機・エミュレーター確認は必須にしない
    - ローカル音源を端末内で再生し、音源をアップロードしない
    - 定義JSONに存在するアルバムと曲だけを検索・表示する
    - PyMusicLooperが検出した任意のループ構造を再生する
