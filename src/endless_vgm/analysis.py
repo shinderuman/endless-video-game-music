@@ -12,6 +12,7 @@ from pathlib import Path
 from .models import Track
 
 LOGGER = logging.getLogger(__name__)
+MAX_LOOP_CANDIDATES = 20
 
 
 @dataclass(frozen=True)
@@ -65,7 +66,7 @@ class LoopAnalyzer:
         with lock:
             cached = _read_cache(cache_path, fingerprint)
             if cached is not None:
-                return cached
+                return _limit_candidates(cached)
             result = self._run(track, fingerprint)
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             cache_path.write_text(
@@ -103,6 +104,7 @@ class LoopAnalyzer:
             raise RuntimeError(message or fallback)
         candidates = parse_candidates(completed.stdout, sample_rate)
         candidates.sort(key=lambda candidate: candidate.score, reverse=True)
+        candidates = candidates[:MAX_LOOP_CANDIDATES]
         return {
             "trackId": track.id,
             "source": fingerprint,
@@ -178,3 +180,11 @@ def _read_cache(cache_path: Path, fingerprint: dict[str, int]) -> dict[str, obje
     except (OSError, json.JSONDecodeError):
         return None
     return payload if payload.get("source") == fingerprint else None
+
+
+def _limit_candidates(result: dict[str, object]) -> dict[str, object]:
+    candidates = result.get("candidates")
+    if not isinstance(candidates, list):
+        return result
+    limited = candidates[:MAX_LOOP_CANDIDATES]
+    return {**result, "candidateCount": len(limited), "candidates": limited}

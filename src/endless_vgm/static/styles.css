@@ -489,12 +489,76 @@ select {
   display: block;
 }
 
+.candidate-picker {
+  min-width: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.candidate-picker:hover,
+.candidate-picker[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.07);
+}
+
 .candidate-row strong {
   font-size: 11px;
 }
 
 .candidate-row span {
   margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.candidate-panel {
+  margin-top: 10px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(8, 7, 12, 0.65);
+}
+
+.candidate-panel[hidden] {
+  display: none;
+}
+
+.candidate-list {
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-color: #4b4659 transparent;
+}
+
+.candidate-option {
+  display: grid;
+  grid-template-columns: 62px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  text-align: left;
+}
+
+.candidate-option:hover,
+.candidate-option.active {
+  background: rgba(255, 255, 255, 0.075);
+}
+
+.candidate-option.active {
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.candidate-option strong {
+  color: #fff;
+  font-size: 10px;
+}
+
+.candidate-option span,
+.candidate-option small {
   color: var(--muted);
   font-size: 9px;
 }

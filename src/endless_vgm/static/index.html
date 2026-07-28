@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="dark">
     <title>Endless VGM</title>
-    <link rel="stylesheet" href="/styles.css?v=2">
+    <link rel="stylesheet" href="/styles.css?v=3">
   </head>
   <body>
     <div class="app-shell">
@@ -20,7 +20,12 @@
         <div class="server-state">
           <span id="server-dot" class="state-dot"></span>
           <span id="server-message">サーバーを確認中</span>
-          <button id="refresh-library" class="quiet-button" type="button">Musicを再読込</button>
+          <button
+            id="refresh-library"
+            class="quiet-button"
+            type="button"
+            title="Music.appからプレイリストと曲を再取得します"
+          >Musicを再読込</button>
         </div>
       </header>
 
@@ -35,7 +40,12 @@
           </div>
           <label class="search-field">
             <span aria-hidden="true">⌕</span>
-            <input id="playlist-search" type="search" placeholder="プレイリストを検索">
+            <input
+              id="playlist-search"
+              type="search"
+              placeholder="プレイリストを検索"
+              title="プレイリスト名で表示を絞り込みます"
+            >
           </label>
           <div id="playlist-list" class="playlist-list" aria-live="polite"></div>
         </aside>
@@ -51,9 +61,18 @@
           <div class="track-filters">
             <label class="search-field">
               <span aria-hidden="true">⌕</span>
-              <input id="track-search" type="search" placeholder="曲名・アーティストを検索">
+              <input
+                id="track-search"
+                type="search"
+                placeholder="曲名・アーティストを検索"
+                title="曲名・アーティスト・アルバム名で再生候補を絞り込みます"
+              >
             </label>
-            <select id="album-filter" aria-label="アルバムで絞り込み">
+            <select
+              id="album-filter"
+              aria-label="アルバムで絞り込み"
+              title="再生対象を選択したアルバムの曲に絞り込みます"
+            >
               <option value="">すべてのアルバム</option>
             </select>
           </div>
@@ -81,18 +100,49 @@
           </div>
 
           <div class="mode-switch" role="group" aria-label="再生モード">
-            <button id="mode-normal" type="button">通常再生</button>
-            <button id="mode-loop" class="active" type="button">ループ再生</button>
+            <button
+              id="mode-normal"
+              type="button"
+              title="曲を先頭から末尾まで通常再生します"
+            >通常再生</button>
+            <button
+              id="mode-loop"
+              class="active"
+              type="button"
+              title="選択中のループ候補を使って繰り返し再生します"
+            >ループ再生</button>
           </div>
 
           <div class="loop-card">
             <div class="candidate-row">
-              <button id="candidate-prev" class="round-button small" type="button" aria-label="前の候補">‹</button>
-              <div>
+              <button
+                id="candidate-prev"
+                class="round-button small"
+                type="button"
+                aria-label="前の候補"
+                title="1つ前のループ候補へ切り替えます"
+              >‹</button>
+              <button
+                id="candidate-picker"
+                class="candidate-picker"
+                type="button"
+                aria-expanded="false"
+                aria-controls="candidate-panel"
+                title="ループ候補一覧を開いて直接選択します"
+              >
                 <strong id="candidate-label">ループ候補 —</strong>
                 <span id="candidate-score">曲を選択すると解析します</span>
-              </div>
-              <button id="candidate-next" class="round-button small" type="button" aria-label="次の候補">›</button>
+              </button>
+              <button
+                id="candidate-next"
+                class="round-button small"
+                type="button"
+                aria-label="次の候補"
+                title="1つ次のループ候補へ切り替えます"
+              >›</button>
+            </div>
+            <div id="candidate-panel" class="candidate-panel" hidden>
+              <div id="candidate-list" class="candidate-list"></div>
             </div>
             <div class="loop-timeline">
               <div id="loop-progress" class="loop-progress"></div>
@@ -104,16 +154,49 @@
           </div>
 
           <div class="transport">
-            <button id="shuffle" class="round-button" type="button" aria-label="ランダム再生">⤨</button>
-            <button id="previous" class="round-button" type="button" aria-label="前の曲">◀</button>
-            <button id="play-pause" class="play-button" type="button" aria-label="再生">▶</button>
-            <button id="next" class="round-button" type="button" aria-label="次の曲">▶</button>
-            <button id="mute" class="round-button" type="button" aria-label="ミュート">◕</button>
+            <button
+              id="shuffle"
+              class="round-button"
+              type="button"
+              aria-label="ランダム再生"
+              title="次の曲をランダムに選ぶ状態へ切り替えます"
+            >⤨</button>
+            <button
+              id="previous"
+              class="round-button"
+              type="button"
+              aria-label="前の曲"
+              title="現在の再生リストにある前の曲へ移動します"
+            >◀</button>
+            <button
+              id="play-pause"
+              class="play-button"
+              type="button"
+              aria-label="再生"
+              title="再生または一時停止します"
+            >▶</button>
+            <button
+              id="next"
+              class="round-button"
+              type="button"
+              aria-label="次の曲"
+              title="現在の再生リストにある次の曲へ移動します"
+            >▶</button>
+            <button
+              id="mute"
+              class="round-button"
+              type="button"
+              aria-label="ミュート"
+              title="消音状態を切り替えます"
+            >◕</button>
           </div>
 
           <div class="rotation-setting">
             <label for="rotation-minutes">1曲あたり</label>
-            <select id="rotation-minutes">
+            <select
+              id="rotation-minutes"
+              title="指定時間の4秒前からフェードし、次の曲へ移動します"
+            >
               <option value="0">切り替えない</option>
               <option value="5">5分ずつループ</option>
               <option value="10">10分ずつループ</option>
@@ -126,6 +209,6 @@
         </section>
       </main>
     </div>
-    <script type="module" src="/app.js?v=6"></script>
+    <script type="module" src="/app.js?v=8"></script>
   </body>
 </html>

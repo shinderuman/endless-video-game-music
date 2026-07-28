@@ -68,3 +68,27 @@ def test_analyze_rejects_unavailable_track(tmp_path) -> None:
 
     with pytest.raises(FileNotFoundError):
         analyzer.analyze(make_track(tmp_path / "missing.m4a"))
+
+
+def test_analyze_limits_candidates_to_top_twenty(tmp_path) -> None:
+    audio = tmp_path / "music.m4a"
+    audio.write_bytes(b"audio")
+
+    def runner(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if command[0] == "ffprobe":
+            output = '{"streams":[{"sample_rate":"48000"}]}'
+            return subprocess.CompletedProcess(command, 0, output, "")
+        output = "\n".join(
+            f"{index} {index + 48000} 0.1 0.1 {index / 100}"
+            for index in range(25)
+        )
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    result = LoopAnalyzer(tmp_path / "analysis", command_runner=runner).analyze(
+        make_track(audio)
+    )
+
+    assert result["candidateCount"] == 20
+    assert len(result["candidates"]) == 20
+    assert result["candidates"][0]["score"] == 0.24
+    assert result["candidates"][-1]["score"] == 0.05

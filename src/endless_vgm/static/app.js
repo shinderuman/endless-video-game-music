@@ -1,4 +1,5 @@
 const FADE_SECONDS = 4;
+const MAX_LOOP_CANDIDATES = 20;
 const audio = new Audio();
 const state = {
   playlists: [],
@@ -41,6 +42,9 @@ const elements = {
   modeLoop: document.querySelector("#mode-loop"),
   candidatePrev: document.querySelector("#candidate-prev"),
   candidateNext: document.querySelector("#candidate-next"),
+  candidatePicker: document.querySelector("#candidate-picker"),
+  candidatePanel: document.querySelector("#candidate-panel"),
+  candidateList: document.querySelector("#candidate-list"),
   candidateLabel: document.querySelector("#candidate-label"),
   candidateScore: document.querySelector("#candidate-score"),
   loopProgress: document.querySelector("#loop-progress"),
@@ -121,6 +125,7 @@ const bindEvents = () => {
   elements.modeLoop.addEventListener("click", () => setMode("loop"));
   elements.candidatePrev.addEventListener("click", () => changeCandidate(-1));
   elements.candidateNext.addEventListener("click", () => changeCandidate(1));
+  elements.candidatePicker.addEventListener("click", toggleCandidatePanel);
   elements.previous.addEventListener("click", () => playAdjacent(-1));
   elements.next.addEventListener("click", () => playAdjacent(1));
   elements.playPause.addEventListener("click", togglePlayback);
@@ -172,6 +177,7 @@ const renderPlaylists = () => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = `playlist-item${playlist.name === state.currentPlaylist ? " active" : ""}`;
+      button.title = `プレイリスト「${playlist.name}」の曲を表示します`;
       const name = document.createElement("span");
       name.textContent = playlist.name;
       const count = document.createElement("small");
@@ -234,6 +240,9 @@ const renderTracks = () => {
       button.type = "button";
       button.className = `track-item${track.id === state.currentTrackId ? " active" : ""}`;
       button.disabled = !track.available;
+      button.title = track.available
+        ? `「${track.name || "名称不明"}」を選択して再生します`
+        : "ローカル音源ファイルの場所を確認できない曲です";
       const number = document.createElement("span");
       number.className = "track-number";
       number.textContent = track.playlistIndex;
@@ -256,6 +265,7 @@ const renderTracks = () => {
     loadMore.className = "quiet-button load-more";
     loadMore.textContent =
       `さらに表示（${renderedTracks.length} / ${state.visibleTracks.length}）`;
+    loadMore.title = "曲一覧をさらに250件表示します";
     loadMore.addEventListener("click", () => {
       state.renderLimit += 250;
       renderTracks();
@@ -322,6 +332,8 @@ const updateTrackDetails = (track) => {
 };
 
 const resetCandidateDisplay = () => {
+  setCandidatePanel(false);
+  elements.candidateList.replaceChildren();
   elements.candidateLabel.textContent = "ループ候補 —";
   elements.candidateScore.textContent =
     state.mode === "loop" ? "解析待ち" : "通常再生では使用しません";
@@ -359,6 +371,8 @@ const playLoop = async (track, token) => {
   const analysis = await (
     await api(`/api/tracks/${track.id}/analyze`, {method: "POST"})
   ).json();
+  analysis.candidates = analysis.candidates.slice(0, MAX_LOOP_CANDIDATES);
+  analysis.candidateCount = analysis.candidates.length;
   if (token !== state.requestToken) {
     return;
   }
@@ -440,6 +454,7 @@ const togglePlayback = async () => {
 const updatePlayButton = () => {
   elements.playPause.textContent = state.playing ? "❚❚" : "▶";
   elements.playPause.setAttribute("aria-label", state.playing ? "一時停止" : "再生");
+  elements.playPause.title = state.playing ? "現在の曲を一時停止します" : "現在の曲を再生します";
 };
 
 const setMode = async (mode) => {
@@ -461,10 +476,8 @@ const changeCandidate = async (delta) => {
   if (!track || !candidates?.length || state.mode !== "loop") {
     return;
   }
-  state.candidateIndex = (state.candidateIndex + delta + candidates.length) % candidates.length;
-  audio.currentTime = candidates[state.candidateIndex].loopStartSeconds;
-  renderCandidate();
-  scheduleTransition();
+  const index = (state.candidateIndex + delta + candidates.length) % candidates.length;
+  selectCandidate(index, false);
 };
 
 const renderCandidate = () => {
@@ -479,6 +492,57 @@ const renderCandidate = () => {
   elements.candidateScore.textContent = `スコア ${candidate.score.toFixed(6)}（高い順）`;
   elements.loopStart.textContent = `START ${formatTime(candidate.loopStartSeconds)}`;
   elements.loopEnd.textContent = `END ${formatTime(candidate.loopEndSeconds)}`;
+  renderCandidateList();
+};
+
+const toggleCandidatePanel = () => {
+  if (!state.analysis?.candidates.length) {
+    return;
+  }
+  setCandidatePanel(elements.candidatePanel.hidden);
+};
+
+const setCandidatePanel = (open) => {
+  elements.candidatePanel.hidden = !open;
+  elements.candidatePicker.setAttribute("aria-expanded", String(open));
+};
+
+const selectCandidate = (index, closePanel) => {
+  const candidates = state.analysis?.candidates;
+  if (!candidates?.[index]) {
+    return;
+  }
+  state.candidateIndex = index;
+  audio.currentTime = candidates[index].loopStartSeconds;
+  renderCandidate();
+  scheduleTransition();
+  if (closePanel) {
+    setCandidatePanel(false);
+  }
+};
+
+const renderCandidateList = () => {
+  const candidates = state.analysis?.candidates ?? [];
+  elements.candidateList.replaceChildren(
+    ...candidates.map((candidate, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className =
+        `candidate-option${index === state.candidateIndex ? " active" : ""}`;
+      button.title = `候補${index + 1}のループ位置へ切り替えます`;
+      button.setAttribute("aria-label", `ループ候補${index + 1}を選択`);
+      const label = document.createElement("strong");
+      label.textContent = `候補 ${index + 1}`;
+      const score = document.createElement("span");
+      score.textContent = candidate.score.toFixed(6);
+      const times = document.createElement("small");
+      times.textContent =
+        `${formatTime(candidate.loopStartSeconds)} → ${formatTime(candidate.loopEndSeconds)}`;
+      button.append(label, score, times);
+      button.addEventListener("click", () => selectCandidate(index, true));
+      return button;
+    }),
+  );
 };
 
 const renderProgress = () => {
@@ -518,6 +582,9 @@ const playAdjacent = async (direction) => {
 const toggleShuffle = () => {
   state.shuffle = !state.shuffle;
   elements.shuffle.classList.toggle("active", state.shuffle);
+  elements.shuffle.title = state.shuffle
+    ? "ランダム再生を解除して曲順再生へ戻します"
+    : "次の曲をランダムに選ぶ状態へ切り替えます";
   setMessage(state.shuffle ? "ランダム再生を有効にしました。" : "曲順再生に戻しました。");
 };
 
@@ -526,6 +593,7 @@ const toggleMute = () => {
   audio.volume = state.muted ? 0 : 1;
   elements.mute.classList.toggle("active", state.muted);
   elements.mute.textContent = state.muted ? "○" : "◕";
+  elements.mute.title = state.muted ? "消音を解除します" : "音を消します";
 };
 
 const scheduleTransition = () => {
