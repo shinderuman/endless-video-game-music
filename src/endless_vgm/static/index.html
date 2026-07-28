@@ -31,7 +31,7 @@
       </header>
 
       <main class="layout">
-        <aside class="library-panel">
+        <aside id="playlist-panel" class="library-panel">
           <div class="section-heading">
             <div>
               <span class="eyebrow">LIBRARY</span>
@@ -50,8 +50,19 @@
           </label>
           <div id="playlist-list" class="playlist-list" aria-live="polite"></div>
         </aside>
+        <div
+          id="playlist-resizer"
+          class="panel-resizer"
+          data-panel="playlist"
+          role="separator"
+          tabindex="0"
+          aria-label="プレイリストの幅"
+          aria-controls="playlist-panel"
+          aria-orientation="vertical"
+          title="左右にドラッグしてプレイリストの幅を調整します"
+        ></div>
 
-        <aside class="album-panel">
+        <aside id="album-panel" class="album-panel">
           <div class="section-heading">
             <div>
               <span class="eyebrow">ALBUMS</span>
@@ -70,8 +81,19 @@
           </label>
           <div id="album-list" class="album-list" aria-live="polite"></div>
         </aside>
+        <div
+          id="album-resizer"
+          class="panel-resizer"
+          data-panel="album"
+          role="separator"
+          tabindex="0"
+          aria-label="アルバムの幅"
+          aria-controls="album-panel"
+          aria-orientation="vertical"
+          title="左右にドラッグしてアルバムの幅を調整します"
+        ></div>
 
-        <section class="track-panel">
+        <section id="track-panel" class="track-panel">
           <div class="section-heading track-heading">
             <div>
               <span class="eyebrow">TRACKS</span>
@@ -94,6 +116,17 @@
             <div class="empty-message">左からMusic.appのプレイリストを選んでください。</div>
           </div>
         </section>
+        <div
+          id="track-resizer"
+          class="panel-resizer"
+          data-panel="track"
+          role="separator"
+          tabindex="0"
+          aria-label="楽曲の幅"
+          aria-controls="track-panel"
+          aria-orientation="vertical"
+          title="左右にドラッグして楽曲の幅を調整します"
+        ></div>
 
         <section class="player-panel">
           <div id="artwork-frame" class="artwork-frame">
@@ -240,6 +273,6 @@
         </section>
       </main>
     </div>
-    <script type="module" src="/app.js?v=12"></script>
+    <script type="module" src="/app.js?v=13"></script>
   </body>
 </html>

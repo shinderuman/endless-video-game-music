@@ -135,13 +135,47 @@ select:focus-visible {
 }
 
 .layout {
+  --playlist-width: 230px;
+  --album-width: 300px;
+  --track-width: 540px;
   display: grid;
   grid-template-columns:
-    minmax(180px, 210px)
-    minmax(210px, 250px)
-    minmax(360px, 500px)
+    var(--playlist-width)
+    6px
+    var(--album-width)
+    6px
+    var(--track-width)
+    6px
     minmax(420px, 1fr);
   min-height: calc(100vh - 76px);
+}
+
+.panel-resizer {
+  position: relative;
+  z-index: 2;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.panel-resizer::after {
+  position: absolute;
+  inset: 0 2px;
+  background: var(--line);
+  content: "";
+  transition: background 0.12s ease;
+}
+
+.panel-resizer:hover::after,
+.panel-resizer:focus-visible::after,
+.panel-resizer.active::after {
+  background: var(--accent);
+}
+
+body.resizing-panels,
+body.resizing-panels * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .library-panel,
@@ -745,9 +779,13 @@ select {
   text-align: center;
 }
 
-@media (max-width: 1250px) {
+@media (max-width: 1500px) {
   .layout {
-    grid-template-columns: 190px 220px minmax(340px, 1fr);
+    grid-template-columns: 210px 260px minmax(380px, 1fr);
+  }
+
+  .panel-resizer {
+    display: none;
   }
 
   .player-panel {

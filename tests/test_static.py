@@ -41,6 +41,14 @@ def test_player_has_four_panes() -> None:
     } <= markup.classes
 
 
+def test_player_has_keyboard_accessible_panel_resizers() -> None:
+    markup = player_markup()
+
+    for element_id in ("playlist-resizer", "album-resizer", "track-resizer"):
+        assert markup.elements[element_id]["role"] == "separator"
+        assert markup.elements[element_id]["tabindex"] == "0"
+
+
 def test_player_has_full_track_seek_control() -> None:
     markup = player_markup()
 

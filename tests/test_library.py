@@ -164,22 +164,14 @@ def test_load_or_refresh_exports_on_clean_install(tmp_path) -> None:
     assert library.playlist("GAME") is not None
 
 
-def test_load_or_refresh_updates_cache_without_all_tracks(tmp_path) -> None:
+def test_load_or_refresh_uses_existing_cache_without_blocking_startup(tmp_path) -> None:
     cache = tmp_path / "library.json"
     cache.write_text(json.dumps(playlist_payload("")), encoding="utf-8")
-    payload = [
-        {
-            "name": "すべての楽曲",
-            "is_library": True,
-            "tracks": [],
-        },
-        *playlist_payload(""),
-    ]
     calls: list[list[str]] = []
 
     def runner(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
         calls.append(command)
-        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        return subprocess.CompletedProcess(command, 0, "[]", "")
 
     library = MusicLibrary(
         cache,
@@ -190,8 +182,8 @@ def test_load_or_refresh_updates_cache_without_all_tracks(tmp_path) -> None:
 
     library.load_or_refresh()
 
-    assert len(calls) == 1
-    assert library.playlist("すべての楽曲").is_library is True
+    assert calls == []
+    assert library.playlist("GAME") is not None
 
 
 def test_refresh_runs_export_and_replaces_cache(tmp_path) -> None:

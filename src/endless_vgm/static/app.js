@@ -1,5 +1,11 @@
 const FADE_SECONDS = 4;
 const MAX_LOOP_CANDIDATES = 20;
+const PANEL_WIDTH_STORAGE_KEY = "endless-vgm-panel-widths";
+const PANEL_WIDTHS = {
+  playlist: {property: "--playlist-width", min: 170, max: 480},
+  album: {property: "--album-width", min: 200, max: 640},
+  track: {property: "--track-width", min: 360, max: 900},
+};
 const audio = new Audio();
 const state = {
   playlists: [],
@@ -23,6 +29,8 @@ const state = {
 };
 
 const elements = {
+  layout: document.querySelector(".layout"),
+  panelResizers: [...document.querySelectorAll(".panel-resizer")],
   serverDot: document.querySelector("#server-dot"),
   serverMessage: document.querySelector("#server-message"),
   refreshLibrary: document.querySelector("#refresh-library"),
@@ -98,6 +106,7 @@ const showAnalysis = (visible) => {
 };
 
 const initialize = async () => {
+  restorePanelWidths();
   bindEvents();
   audio.addEventListener("ended", () => playAdjacent(1));
   audio.addEventListener("durationchange", renderSeek);
@@ -125,6 +134,10 @@ const initialize = async () => {
 };
 
 const bindEvents = () => {
+  for (const resizer of elements.panelResizers) {
+    resizer.addEventListener("pointerdown", beginPanelResize);
+    resizer.addEventListener("keydown", resizePanelWithKeyboard);
+  }
   elements.playlistSearch.addEventListener("input", renderPlaylists);
   elements.albumSearch.addEventListener("input", renderAlbums);
   elements.trackSearch.addEventListener("input", resetTrackLimit);
@@ -141,6 +154,94 @@ const bindEvents = () => {
   elements.shuffle.addEventListener("click", toggleShuffle);
   elements.mute.addEventListener("click", toggleMute);
   elements.rotationMinutes.addEventListener("change", scheduleTransition);
+};
+
+const restorePanelWidths = () => {
+  try {
+    const widths = JSON.parse(localStorage.getItem(PANEL_WIDTH_STORAGE_KEY) || "{}");
+    for (const [panel, width] of Object.entries(widths)) {
+      setPanelWidth(panel, width);
+    }
+  } catch {
+    // 保存値が壊れている場合はCSSの初期幅を使う。
+  }
+  syncResizerValues();
+};
+
+const setPanelWidth = (panel, requestedWidth) => {
+  const config = PANEL_WIDTHS[panel];
+  const width = Number(requestedWidth);
+  if (!config || !Number.isFinite(width)) {
+    return;
+  }
+  const clamped = Math.round(Math.max(config.min, Math.min(width, config.max)));
+  elements.layout.style.setProperty(config.property, `${clamped}px`);
+  const resizer = elements.panelResizers.find(
+    (candidate) => candidate.dataset.panel === panel,
+  );
+  resizer?.setAttribute("aria-valuenow", String(clamped));
+  resizer?.setAttribute("aria-valuemin", String(config.min));
+  resizer?.setAttribute("aria-valuemax", String(config.max));
+};
+
+const panelWidth = (panel) => {
+  const property = PANEL_WIDTHS[panel]?.property;
+  return Number.parseFloat(getComputedStyle(elements.layout).getPropertyValue(property));
+};
+
+const savePanelWidths = () => {
+  const widths = Object.fromEntries(
+    Object.keys(PANEL_WIDTHS).map((panel) => [panel, panelWidth(panel)]),
+  );
+  try {
+    localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, JSON.stringify(widths));
+  } catch {
+    // 保存できない環境でも現在の画面では幅調整を利用できる。
+  }
+};
+
+const syncResizerValues = () => {
+  for (const panel of Object.keys(PANEL_WIDTHS)) {
+    setPanelWidth(panel, panelWidth(panel));
+  }
+};
+
+const beginPanelResize = (event) => {
+  if (event.button !== 0) {
+    return;
+  }
+  const resizer = event.currentTarget;
+  const panel = resizer.dataset.panel;
+  const startX = event.clientX;
+  const startWidth = panelWidth(panel);
+  resizer.classList.add("active");
+  document.body.classList.add("resizing-panels");
+  const move = (moveEvent) => {
+    setPanelWidth(panel, startWidth + moveEvent.clientX - startX);
+  };
+  const finish = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", finish);
+    window.removeEventListener("pointercancel", finish);
+    resizer.classList.remove("active");
+    document.body.classList.remove("resizing-panels");
+    savePanelWidths();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", finish);
+  window.addEventListener("pointercancel", finish);
+  event.preventDefault();
+};
+
+const resizePanelWithKeyboard = (event) => {
+  if (!["ArrowLeft", "ArrowRight"].includes(event.key)) {
+    return;
+  }
+  const panel = event.currentTarget.dataset.panel;
+  const direction = event.key === "ArrowLeft" ? -1 : 1;
+  setPanelWidth(panel, panelWidth(panel) + direction * 12);
+  savePanelWidths();
+  event.preventDefault();
 };
 
 const loadPlaylists = async () => {

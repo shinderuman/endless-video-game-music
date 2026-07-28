@@ -46,7 +46,7 @@ class MusicLibrary:
 
     def load_or_refresh(self) -> None:
         self.load()
-        if any(playlist.is_library for playlist in self.playlists()):
+        if self.playlists():
             return
         try:
             self.refresh()
