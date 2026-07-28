@@ -649,7 +649,10 @@ const playLoop = async (track, token) => {
   ).json();
   const scoredCandidates = analysis.candidates.slice(0, MAX_LOOP_CANDIDATES);
   analysis.candidateCount = scoredCandidates.length;
-  analysis.candidates = withHeadLoopCandidate(scoredCandidates, audio.duration);
+  analysis.candidates = withHeadLoopCandidate(
+    analysis.headCandidate,
+    scoredCandidates,
+  );
   if (token !== state.requestToken) {
     return;
   }
@@ -681,20 +684,14 @@ const playLoop = async (track, token) => {
   updatePlayButton();
 };
 
-const withHeadLoopCandidate = (candidates, duration) => {
-  const best = candidates[0];
-  const loopEndSeconds = best?.loopEndSeconds ?? duration;
-  if (!Number.isFinite(loopEndSeconds) || loopEndSeconds <= 0) {
+const withHeadLoopCandidate = (headCandidate, candidates) => {
+  if (!headCandidate) {
     return candidates;
   }
   return [
     {
-      ...(best ?? {}),
-      loopStartSample: 0,
-      loopStartSeconds: 0,
-      loopEndSeconds,
+      ...headCandidate,
       isHeadLoop: true,
-      usesScoredLoopEnd: Boolean(best),
     },
     ...candidates,
   ];
@@ -788,9 +785,7 @@ const renderCandidate = () => {
   elements.candidateLabel.textContent =
     `ループ候補 ${candidateNumber} / ${state.analysis.candidateCount}`;
   elements.candidateScore.textContent = candidate.isHeadLoop
-    ? candidate.usesScoredLoopEnd
-      ? "先頭0:00からループ（終了は候補1と共通）"
-      : "先頭0:00から曲の終端までループ"
+    ? `先頭に最も近い候補・スコア ${candidate.score.toFixed(6)}`
     : `スコア ${candidate.score.toFixed(6)}（高い順）`;
   elements.loopStart.textContent = `START ${formatTime(candidate.loopStartSeconds)}`;
   elements.loopEnd.textContent = `END ${formatTime(candidate.loopEndSeconds)}`;
@@ -837,9 +832,7 @@ const renderCandidateList = () => {
       const label = document.createElement("strong");
       label.textContent = `候補 ${candidateNumber}`;
       const score = document.createElement("span");
-      score.textContent = candidate.isHeadLoop
-        ? "先頭固定"
-        : candidate.score.toFixed(6);
+      score.textContent = candidate.score.toFixed(6);
       const times = document.createElement("small");
       times.textContent =
         `${formatTime(candidate.loopStartSeconds)} → ${formatTime(candidate.loopEndSeconds)}`;

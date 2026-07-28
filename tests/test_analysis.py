@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 
 import pytest
@@ -60,6 +61,8 @@ def test_analyze_sorts_candidates_and_uses_cache(tmp_path) -> None:
     assert first == second
     assert first["candidateCount"] == 2
     assert first["candidates"][0]["score"] == 0.99
+    assert first["headCandidate"]["loopStartSample"] == 0
+    assert first["headCandidate"]["loopEndSample"] == 48000
     assert len(calls) == 2
 
 
@@ -92,3 +95,59 @@ def test_analyze_limits_candidates_to_top_twenty(tmp_path) -> None:
     assert len(result["candidates"]) == 20
     assert result["candidates"][0]["score"] == 0.24
     assert result["candidates"][-1]["score"] == 0.05
+    assert result["headCandidate"]["loopStartSample"] == 0
+    assert result["headCandidate"]["score"] == 0
+
+
+def test_analyze_keeps_earliest_candidate_outside_score_limit(tmp_path) -> None:
+    audio = tmp_path / "music.m4a"
+    audio.write_bytes(b"audio")
+
+    def runner(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if command[0] == "ffprobe":
+            output = '{"streams":[{"sample_rate":"48000"}]}'
+            return subprocess.CompletedProcess(command, 0, output, "")
+        output = "\n".join(
+            f"{index * 48000} {(index + 1) * 48000} 0.1 0.1 {index / 100}"
+            for index in range(25)
+        )
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    result = LoopAnalyzer(tmp_path / "analysis", command_runner=runner).analyze(
+        make_track(audio)
+    )
+
+    assert result["headCandidate"]["loopStartSeconds"] == 0
+    assert result["headCandidate"]["loopEndSeconds"] == 1
+    assert result["headCandidate"] not in result["candidates"]
+
+
+def test_analyze_invalidates_cache_without_head_candidate_version(tmp_path) -> None:
+    audio = tmp_path / "music.m4a"
+    audio.write_bytes(b"audio")
+    cache_dir = tmp_path / "analysis"
+    cache_dir.mkdir()
+    stat = audio.stat()
+    (cache_dir / f"{'a' * 24}.json").write_text(
+        json.dumps(
+            {
+                "source": {"size": stat.st_size, "mtimeNs": stat.st_mtime_ns},
+                "candidateCount": 0,
+                "candidates": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls: list[list[str]] = []
+
+    def runner(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if command[0] == "ffprobe":
+            output = '{"streams":[{"sample_rate":"48000"}]}'
+            return subprocess.CompletedProcess(command, 0, output, "")
+        return subprocess.CompletedProcess(command, 0, "0 48000 0.1 0.1 0.8\n", "")
+
+    result = LoopAnalyzer(cache_dir, command_runner=runner).analyze(make_track(audio))
+
+    assert result["headCandidate"]["loopStartSeconds"] == 0
+    assert len(calls) == 2

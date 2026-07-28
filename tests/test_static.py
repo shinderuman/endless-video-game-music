@@ -74,11 +74,11 @@ def test_music_refresh_shows_loading_state_and_disables_button() -> None:
     assert "cursor: not-allowed" in stylesheet
 
 
-def test_loop_candidates_include_zero_start_without_changing_default() -> None:
+def test_loop_candidates_include_earliest_start_without_changing_default() -> None:
     script = static_asset("app.js")
 
     assert "analysis.candidates = withHeadLoopCandidate" in script
-    assert "loopStartSeconds: 0" in script
+    assert "analysis.headCandidate" in script
     assert "isHeadLoop: true" in script
     assert "state.candidateIndex = scoredCandidates.length > 0 ? 1 : 0" in script
     assert "candidate.isHeadLoop ? 0 : state.candidateIndex" in script

@@ -13,6 +13,7 @@ from .models import Track
 
 LOGGER = logging.getLogger(__name__)
 MAX_LOOP_CANDIDATES = 20
+ANALYSIS_CACHE_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -103,13 +104,27 @@ class LoopAnalyzer:
             fallback = f"PyMusicLooper failed with exit code {completed.returncode}"
             raise RuntimeError(message or fallback)
         candidates = parse_candidates(completed.stdout, sample_rate)
+        head_candidate = min(
+            candidates,
+            key=lambda candidate: (
+                candidate.loop_start_sample,
+                -candidate.score,
+            ),
+            default=None,
+        )
         candidates.sort(key=lambda candidate: candidate.score, reverse=True)
         candidates = candidates[:MAX_LOOP_CANDIDATES]
         return {
+            "analysisVersion": ANALYSIS_CACHE_VERSION,
             "trackId": track.id,
             "source": fingerprint,
             "analysisDurationSeconds": time.monotonic() - started,
             "candidateCount": len(candidates),
+            "headCandidate": (
+                head_candidate.public_dict()
+                if head_candidate is not None
+                else None
+            ),
             "candidates": [candidate.public_dict() for candidate in candidates],
         }
 
@@ -178,6 +193,8 @@ def _read_cache(cache_path: Path, fingerprint: dict[str, int]) -> dict[str, obje
     try:
         payload = json.loads(cache_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        return None
+    if payload.get("analysisVersion") != ANALYSIS_CACHE_VERSION:
         return None
     return payload if payload.get("source") == fingerprint else None
 
