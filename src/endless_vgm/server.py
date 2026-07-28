@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from .albums import build_album_groups
 from .analysis import LoopAnalyzer
 from .artwork import ArtworkExporter, artwork_content_type
 from .library import MusicLibrary
@@ -96,6 +97,10 @@ class PlayerRequestHandler(BaseHTTPRequestHandler):
                 {
                     "name": playlist.name,
                     "tracks": [track.public_dict() for track in playlist.tracks],
+                    "albums": [
+                        album.public_dict()
+                        for album in build_album_groups(playlist.tracks)
+                    ],
                 },
                 head_only=head_only,
             )

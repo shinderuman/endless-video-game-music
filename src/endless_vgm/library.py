@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import subprocess
 import threading
 import unicodedata
@@ -14,6 +15,8 @@ from .models import Playlist, Track
 
 LOGGER = logging.getLogger(__name__)
 MUSIC_BRIDGE_CACHE = Path.home() / "Library" / "Caches" / "Music Bridge" / "library-cache.json"
+FILE_TRACK_PATTERN = re.compile(r"^(\d{1,2})-(\d{1,3})(?:\D|$)")
+LEADING_TRACK_PATTERN = re.compile(r"^(\d{1,3})(?:\s|[._-])")
 
 
 class MusicLibrary:
@@ -143,6 +146,8 @@ def _parse_track(playlist: str, index: int, raw_track: dict[str, Any]) -> Track:
         ]
     )
     track_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+    album = _text(raw_track.get("album"))
+    disc_number, track_number = _track_numbers(raw_track, album, location)
     return Track(
         id=track_id,
         playlist=playlist,
@@ -150,8 +155,10 @@ def _parse_track(playlist: str, index: int, raw_track: dict[str, Any]) -> Track:
         name=_text(raw_track.get("name")),
         artist=_text(raw_track.get("artist")),
         album_artist=_text(raw_track.get("album_artist") or raw_track.get("albumArtist")),
-        album=_text(raw_track.get("album")),
+        album=album,
         location=location,
+        disc_number=disc_number,
+        track_number=track_number,
     )
 
 
@@ -159,3 +166,39 @@ def _text(value: object) -> str:
     if value is None:
         return ""
     return unicodedata.normalize("NFC", str(value))
+
+
+def _track_numbers(
+    raw_track: dict[str, Any],
+    album: str,
+    location: Path | None,
+) -> tuple[int | None, int | None]:
+    from .albums import parse_album_name
+
+    disc_number = _positive_int(
+        raw_track.get("disc_number") or raw_track.get("discNumber")
+    )
+    track_number = _positive_int(
+        raw_track.get("track_number") or raw_track.get("trackNumber")
+    )
+    album_info = parse_album_name(album)
+    if disc_number is None and album_info is not None:
+        disc_number = album_info.disc_number
+    if location is None:
+        return disc_number, track_number
+    filename = location.name
+    file_match = FILE_TRACK_PATTERN.match(filename)
+    if file_match is not None:
+        disc_number = disc_number or int(file_match.group(1))
+        track_number = track_number or int(file_match.group(2))
+    elif track_number is None and (leading_match := LEADING_TRACK_PATTERN.match(filename)):
+        track_number = int(leading_match.group(1))
+    return disc_number, track_number
+
+
+def _positive_int(value: object) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None

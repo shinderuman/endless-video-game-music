@@ -89,6 +89,7 @@ def test_http_api_static_and_audio_range(tmp_path) -> None:
         playlist = request_json(f"{base}/api/playlist?name=GAME")
         track = playlist["tracks"][0]
         assert track["name"] == "Track"
+        assert playlist["albums"][0]["trackIds"] == [track["id"]]
         analysis = request_json(
             f"{base}/api/tracks/{track['id']}/analyze",
             method="POST",

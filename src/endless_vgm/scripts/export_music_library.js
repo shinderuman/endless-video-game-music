@@ -74,6 +74,12 @@ const parseTrack = (track, properties) => {
         : readValue(() => track.albumArtist(), ""),
     ),
     album: nfc(properties ? value("album", "") : readValue(() => track.album(), "")),
+    disc_number: properties
+      ? value("discNumber", null)
+      : readValue(() => track.discNumber(), null),
+    track_number: properties
+      ? value("trackNumber", null)
+      : readValue(() => track.trackNumber(), null),
     location: location ? nfc(location.toString()) : null,
   };
 };

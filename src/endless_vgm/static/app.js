@@ -3,6 +3,7 @@ const MAX_LOOP_CANDIDATES = 20;
 const audio = new Audio();
 const state = {
   playlists: [],
+  albums: [],
   tracks: [],
   visibleTracks: [],
   currentPlaylist: "",
@@ -193,6 +194,7 @@ const selectPlaylist = async (name) => {
   const payload = await (await api(`/api/playlist?name=${encodeURIComponent(name)}`)).json();
   state.currentPlaylist = name;
   state.tracks = payload.tracks;
+  state.albums = payload.albums ?? legacyAlbumGroups(state.tracks);
   state.renderLimit = 250;
   elements.playlistTitle.textContent = name;
   elements.trackCount.textContent = state.tracks.length;
@@ -202,18 +204,37 @@ const selectPlaylist = async (name) => {
   renderTracks();
 };
 
+const legacyAlbumGroups = (tracks) => {
+  const albums = new Map();
+  for (const track of tracks) {
+    if (!albums.has(track.album)) {
+      albums.set(track.album, {
+        id: `legacy-${albums.size}`,
+        name: track.album || "アルバム不明",
+        discCount: 1,
+        trackCount: 0,
+        trackIds: [],
+      });
+    }
+    const album = albums.get(track.album);
+    album.trackCount += 1;
+    album.trackIds.push(track.id);
+  }
+  return [...albums.values()];
+};
+
 const populateAlbums = () => {
-  const albums = [...new Set(state.tracks.map((track) => track.album).filter(Boolean))]
-    .sort((left, right) => left.localeCompare(right, "ja"));
   const all = document.createElement("option");
   all.value = "";
   all.textContent = "すべてのアルバム";
   elements.albumFilter.replaceChildren(
     all,
-    ...albums.map((album) => {
+    ...state.albums.map((album) => {
       const option = document.createElement("option");
-      option.value = album;
-      option.textContent = album;
+      option.value = album.id;
+      option.textContent = album.discCount > 1
+        ? `${album.name}（${album.discCount}枚・${album.trackCount}曲）`
+        : album.name;
       return option;
     }),
   );
@@ -221,11 +242,16 @@ const populateAlbums = () => {
 
 const renderTracks = () => {
   const query = elements.trackSearch.value.trim().toLocaleLowerCase();
-  const album = elements.albumFilter.value;
-  state.visibleTracks = state.tracks.filter((track) => {
-    const matchesAlbum = !album || track.album === album;
+  const selectedAlbum = state.albums.find(
+    (album) => album.id === elements.albumFilter.value,
+  );
+  const tracksById = new Map(state.tracks.map((track) => [track.id, track]));
+  const albumTracks = selectedAlbum
+    ? selectedAlbum.trackIds.map((trackId) => tracksById.get(trackId)).filter(Boolean)
+    : state.tracks;
+  state.visibleTracks = albumTracks.filter((track) => {
     const haystack = `${track.name}\0${track.artist}\0${track.album}`.toLocaleLowerCase();
-    return matchesAlbum && haystack.includes(query);
+    return haystack.includes(query);
   });
   if (state.visibleTracks.length === 0) {
     const message = document.createElement("div");
@@ -235,7 +261,20 @@ const renderTracks = () => {
     return;
   }
   const renderedTracks = state.visibleTracks.slice(0, state.renderLimit);
-  const trackButtons = renderedTracks.map((track) => {
+  const trackNodes = [];
+  let previousDisc = null;
+  for (const track of renderedTracks) {
+    if (
+      selectedAlbum?.discCount > 1
+      && track.discNumber !== previousDisc
+      && track.discNumber !== null
+    ) {
+      const divider = document.createElement("div");
+      divider.className = "disc-divider";
+      divider.textContent = `DISC ${track.discNumber}`;
+      trackNodes.push(divider);
+      previousDisc = track.discNumber;
+    }
       const button = document.createElement("button");
       button.type = "button";
       button.className = `track-item${track.id === state.currentTrackId ? " active" : ""}`;
@@ -245,7 +284,9 @@ const renderTracks = () => {
         : "ローカル音源ファイルの場所を確認できない曲です";
       const number = document.createElement("span");
       number.className = "track-number";
-      number.textContent = track.playlistIndex;
+      number.textContent = selectedAlbum && track.trackNumber
+        ? track.trackNumber.toString().padStart(2, "0")
+        : track.playlistIndex;
       const copy = document.createElement("span");
       copy.className = "track-copy";
       const title = document.createElement("strong");
@@ -257,8 +298,8 @@ const renderTracks = () => {
       availability.className = `availability${track.available ? "" : " missing"}`;
       button.append(number, copy, availability);
       button.addEventListener("click", () => selectTrack(track.id, true));
-      return button;
-    });
+      trackNodes.push(button);
+  }
   if (renderedTracks.length < state.visibleTracks.length) {
     const loadMore = document.createElement("button");
     loadMore.type = "button";
@@ -270,9 +311,9 @@ const renderTracks = () => {
       state.renderLimit += 250;
       renderTracks();
     });
-    trackButtons.push(loadMore);
+    trackNodes.push(loadMore);
   }
-  elements.trackList.replaceChildren(...trackButtons);
+  elements.trackList.replaceChildren(...trackNodes);
 };
 
 const resetTrackLimit = () => {

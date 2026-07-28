@@ -232,6 +232,19 @@ select:focus-visible {
   text-align: left;
 }
 
+.disc-divider {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 9px 6px;
+  border-bottom: 1px solid rgba(255, 79, 147, 0.28);
+  background: rgba(17, 15, 24, 0.96);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
 .playlist-item {
   display: flex;
   align-items: center;

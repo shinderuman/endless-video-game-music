@@ -14,6 +14,8 @@ class Track:
     album_artist: str
     album: str
     location: Path | None
+    disc_number: int | None = None
+    track_number: int | None = None
 
     @property
     def available(self) -> bool:
@@ -28,6 +30,8 @@ class Track:
             "artist": self.artist,
             "albumArtist": self.album_artist,
             "album": self.album,
+            "discNumber": self.disc_number,
+            "trackNumber": self.track_number,
             "available": self.available,
             "audioUrl": f"/api/tracks/{self.id}/audio" if self.available else None,
             "artworkUrl": f"/api/tracks/{self.id}/artwork" if self.available else None,

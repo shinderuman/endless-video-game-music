@@ -86,6 +86,36 @@ def test_loads_playlist_with_null_tracks_as_empty(tmp_path) -> None:
     assert playlist.tracks == ()
 
 
+def test_infers_disc_and_track_numbers_from_filename(tmp_path) -> None:
+    audio = tmp_path / "2-07 Battle.m4a"
+    audio.write_bytes(b"audio")
+    cache = tmp_path / "library.json"
+    cache.write_text(
+        json.dumps(
+            [
+                {
+                    "name": "GAME",
+                    "tracks": [
+                        {
+                            "name": "Battle",
+                            "album": "Album",
+                            "location": str(audio),
+                        }
+                    ],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    library = MusicLibrary(cache, tmp_path / "export.js", fallback_cache_path=tmp_path / "none")
+
+    library.load()
+
+    track = library.playlist("GAME").tracks[0]
+    assert track.disc_number == 2
+    assert track.track_number == 7
+
+
 def test_load_or_refresh_exports_on_clean_install(tmp_path) -> None:
     audio = tmp_path / "track.aac"
     audio.write_bytes(b"audio")
