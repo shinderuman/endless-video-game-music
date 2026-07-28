@@ -1,53 +1,68 @@
 # Endless Video Game Music
 
-ゲーム音楽CDから取り込んだローカル音源を、事前生成したループ定義に従ってMacとAndroidのブラウザで無限ループ再生する個人用プロジェクトです。
+macOSのMusic.appにあるローカル音源をブラウザで再生し、PyMusicLooperが検出した
+ループ候補をスコア順に切り替えられるローカルプレイヤーです。音源は外部へ送信せず、
+Pythonサーバーから同じMacのChromeへ配信します。
 
-- プロジェクト表示名: `Endless Video Game Music`
-- GitHubリポジトリ名: `endless-video-game-music`
-- 製品CLIコマンド名: `vgm`
-- 現在の状態: **Stage 0完了、Stage 1利用者判定待ち、製品実装禁止**
+## 動作環境
 
-## 最終的に作るもの
+- macOSとMusic.app
+- Python 3.12以上
+- [uv](https://docs.astral.sh/uv/)
+- FFmpeg（`ffmpeg`と`ffprobe`）
+- Chrome
 
-1. **定義JSON出力CLI**
-   - M3U8プレイリスト内の曲だけを対象にする
-   - PyMusicLooperでループ候補を解析する
-   - 採用基準を満たした曲だけを定義JSONへ出力する
-   - 音源タグを使ってアルバム・曲・ディスク・トラック情報を構成する
-   - 製品コマンドは `vgm generate`
+Music.app上に表示されていても、Apple Musicのストリーミングのみでローカルファイルが
+存在しない曲は再生対象になりません。DockerはMusic.appの自動操作とホスト音源への
+アクセスを複雑にするため使用しません。
 
-2. **静的HTMLプレイヤー**
-   - macOSとAndroidのChromeを必須対応・検証対象とする
-   - Edgeでも互換動作する実装を目指すが、Edge実機・エミュレーター確認は必須にしない
-   - ローカル音源を端末内で再生し、音源をアップロードしない
-   - 定義JSONに存在するアルバムと曲だけを検索・表示する
-   - PyMusicLooperが検出した任意のループ構造を再生する
-   - 初期公開先はGitHub Pagesを候補とする
+## セットアップと起動
 
-## 最初に読む順序
+```sh
+brew install uv ffmpeg
+make setup
+make open
+```
 
-1. [`CODEX_START.md`](CODEX_START.md)
-2. [`AGENTS.md`](AGENTS.md)
-3. [`DESIGN.md`](DESIGN.md)
-4. [`POC.md`](POC.md)
-5. [`POC_RESULTS.md`](POC_RESULTS.md)
+`make open`は既定で `http://127.0.0.1:8765/` を開きます。ブラウザを自動で開かず
+サーバーだけ起動する場合は次を使います。
 
-承認済みUI試作は [`references/approved-player-mockup.html`](references/approved-player-mockup.html) です。これは製品コードではなく、外観と操作仕様の正本となる参照資料です。
+```sh
+make run
+```
 
-M3U8の参考入力は [`references/sample-playlist.m3u8`](references/sample-playlist.m3u8) です。製品解析では利用者が指定する完全版M3U8を使います。
+ポートを変更する場合:
 
-## 重要な停止条件
+```sh
+make run PORT=9000
+```
 
-PoCがすべて完了し、利用者が明示的に総合GOを出すまで製品実装へ進んではいけません。各PoC段階の完了後にも一度停止し、結果を報告して次段階の明示的な許可を待ちます。
+初回起動時はMusic.appからプレイリストを自動取得します。macOSから確認された場合は、
+サーバーを起動したターミナルによるMusic.appの操作を許可してください。拒否した場合も
+画面右上の「Musicを再読込」から再試行できます。
 
-## 外部調査対象
+## 主な機能
 
-- PyMusicLooper
-  - https://github.com/arkrow/PyMusicLooper
-  - https://github.com/arkrow/PyMusicLooper/blob/master/CLI_README.md
-- 利用者の既存プロジェクト
-  - ローカル: `~/src/music-bridge`
-  - https://github.com/shinderuman/music-bridge
-  - Android対応コミット: `0f12fa6b3c8351e7e4a54fbbb11c14ea5af86711`
+- Music.appのプレイリストとアルバムを自動読込
+- 曲名・アーティスト・アルバム検索
+- 通常再生とPyMusicLooperによるループ再生
+- ループ候補をスコアの高い順に切替
+- 前の曲、次の曲、ランダム再生
+- 指定した分数ごとに4秒フェードして次の曲へ移動
+- 次の曲をバックグラウンド解析
+- 埋め込み画像またはMusic.appからジャケット画像を表示
+- 解析結果・ライブラリ・ジャケット画像をユーザー別にキャッシュ
 
-外部資料の記載だけを信用せず、インストール済みバージョンのヘルプ確認と実音源・実エミュレーターを使った動作確認を行います。
+キャッシュは `~/Library/Caches/Endless Video Game Music/` に保存します。Music Bridgeの
+既存キャッシュがある場合だけ初回読込の高速化に利用しますが、Music Bridgeの導入は
+必要ありません。
+
+## 開発用コマンド
+
+```sh
+make doctor  # 外部依存を確認
+make test    # pytest
+make lint    # ruff
+make format  # ruff format
+make check   # lintとテスト
+```
