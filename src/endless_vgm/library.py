@@ -46,7 +46,7 @@ class MusicLibrary:
 
     def load_or_refresh(self) -> None:
         self.load()
-        if self.playlists():
+        if any(playlist.is_library for playlist in self.playlists()):
             return
         try:
             self.refresh()
@@ -130,7 +130,11 @@ def _parse_playlist(raw_playlist: dict[str, Any]) -> Playlist:
         for index, value in enumerate(raw_tracks, start=1)
         if isinstance(value, dict)
     )
-    return Playlist(name=name, tracks=tracks)
+    return Playlist(
+        name=name,
+        tracks=tracks,
+        is_library=raw_playlist.get("is_library") is True,
+    )
 
 
 def _parse_track(playlist: str, index: int, raw_track: dict[str, Any]) -> Track:

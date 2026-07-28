@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="dark">
     <title>Endless VGM</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/styles.css?v=4">
+    <link rel="stylesheet" href="/styles.css?v=6">
   </head>
   <body>
     <div class="app-shell">
@@ -51,11 +51,31 @@
           <div id="playlist-list" class="playlist-list" aria-live="polite"></div>
         </aside>
 
+        <aside class="album-panel">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">ALBUMS</span>
+              <h2>アルバム</h2>
+            </div>
+            <span id="album-count" class="count-pill">0</span>
+          </div>
+          <label class="search-field">
+            <span aria-hidden="true">⌕</span>
+            <input
+              id="album-search"
+              type="search"
+              placeholder="アルバムを検索"
+              title="アルバム名で表示を絞り込みます"
+            >
+          </label>
+          <div id="album-list" class="album-list" aria-live="polite"></div>
+        </aside>
+
         <section class="track-panel">
           <div class="section-heading track-heading">
             <div>
-              <span class="eyebrow">QUEUE</span>
-              <h2 id="playlist-title">プレイリストを選択</h2>
+              <span class="eyebrow">TRACKS</span>
+              <h2>楽曲</h2>
             </div>
             <span id="track-count" class="count-pill">0</span>
           </div>
@@ -69,13 +89,6 @@
                 title="曲名・アーティスト・アルバム名で再生候補を絞り込みます"
               >
             </label>
-            <select
-              id="album-filter"
-              aria-label="アルバムで絞り込み"
-              title="再生対象を選択したアルバムの曲に絞り込みます"
-            >
-              <option value="">すべてのアルバム</option>
-            </select>
           </div>
           <div id="track-list" class="track-list" aria-live="polite">
             <div class="empty-message">左からMusic.appのプレイリストを選んでください。</div>
@@ -98,6 +111,23 @@
             <h2 id="now-title">曲を選択してください</h2>
             <p id="now-artist">Endless VGM</p>
             <p id="now-album"></p>
+          </div>
+
+          <div class="seek-control">
+            <input
+              id="seek-bar"
+              type="range"
+              min="0"
+              max="1000"
+              value="0"
+              disabled
+              aria-label="再生位置"
+              title="曲全体の再生位置を変更します"
+            >
+            <div class="seek-times">
+              <span id="current-time">現在 0:00</span>
+              <span id="total-time">全長 —</span>
+            </div>
           </div>
 
           <div class="mode-switch" role="group" aria-label="再生モード">
@@ -210,6 +240,6 @@
         </section>
       </main>
     </div>
-    <script type="module" src="/app.js?v=10"></script>
+    <script type="module" src="/app.js?v=12"></script>
   </body>
 </html>

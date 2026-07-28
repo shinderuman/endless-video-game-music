@@ -7,6 +7,7 @@ const state = {
   tracks: [],
   visibleTracks: [],
   currentPlaylist: "",
+  currentAlbumId: "",
   currentTrackId: null,
   mode: "loop",
   analysis: null,
@@ -28,10 +29,11 @@ const elements = {
   playlistCount: document.querySelector("#playlist-count"),
   playlistSearch: document.querySelector("#playlist-search"),
   playlistList: document.querySelector("#playlist-list"),
-  playlistTitle: document.querySelector("#playlist-title"),
+  albumCount: document.querySelector("#album-count"),
+  albumSearch: document.querySelector("#album-search"),
+  albumList: document.querySelector("#album-list"),
   trackCount: document.querySelector("#track-count"),
   trackSearch: document.querySelector("#track-search"),
-  albumFilter: document.querySelector("#album-filter"),
   trackList: document.querySelector("#track-list"),
   artwork: document.querySelector("#artwork"),
   artworkFallback: document.querySelector("#artwork-fallback"),
@@ -39,6 +41,9 @@ const elements = {
   nowTitle: document.querySelector("#now-title"),
   nowArtist: document.querySelector("#now-artist"),
   nowAlbum: document.querySelector("#now-album"),
+  seekBar: document.querySelector("#seek-bar"),
+  currentTime: document.querySelector("#current-time"),
+  totalTime: document.querySelector("#total-time"),
   modeNormal: document.querySelector("#mode-normal"),
   modeLoop: document.querySelector("#mode-loop"),
   candidatePrev: document.querySelector("#candidate-prev"),
@@ -95,6 +100,8 @@ const showAnalysis = (visible) => {
 const initialize = async () => {
   bindEvents();
   audio.addEventListener("ended", () => playAdjacent(1));
+  audio.addEventListener("durationchange", renderSeek);
+  audio.addEventListener("loadedmetadata", renderSeek);
   audio.addEventListener("timeupdate", () => {
     enforceLoop();
     renderProgress();
@@ -119,8 +126,9 @@ const initialize = async () => {
 
 const bindEvents = () => {
   elements.playlistSearch.addEventListener("input", renderPlaylists);
+  elements.albumSearch.addEventListener("input", renderAlbums);
   elements.trackSearch.addEventListener("input", resetTrackLimit);
-  elements.albumFilter.addEventListener("change", resetTrackLimit);
+  elements.seekBar.addEventListener("input", seekAudio);
   elements.refreshLibrary.addEventListener("click", refreshLibrary);
   elements.modeNormal.addEventListener("click", () => setMode("normal"));
   elements.modeLoop.addEventListener("click", () => setMode("loop"));
@@ -178,7 +186,9 @@ const renderPlaylists = () => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = `playlist-item${playlist.name === state.currentPlaylist ? " active" : ""}`;
-      button.title = `プレイリスト「${playlist.name}」の曲を表示します`;
+      button.title = playlist.isLibrary
+        ? "Music.appライブラリ内のすべての曲を表示します"
+        : `プレイリスト「${playlist.name}」の曲を表示します`;
       const name = document.createElement("span");
       name.textContent = playlist.name;
       const count = document.createElement("small");
@@ -193,14 +203,16 @@ const renderPlaylists = () => {
 const selectPlaylist = async (name) => {
   const payload = await (await api(`/api/playlist?name=${encodeURIComponent(name)}`)).json();
   state.currentPlaylist = name;
+  state.currentAlbumId = "";
   state.tracks = payload.tracks;
   state.albums = payload.albums ?? legacyAlbumGroups(state.tracks);
   state.renderLimit = 250;
-  elements.playlistTitle.textContent = name;
   elements.trackCount.textContent = state.tracks.length;
+  elements.albumCount.textContent = state.albums.length;
+  elements.albumSearch.value = "";
   elements.trackSearch.value = "";
-  populateAlbums();
   renderPlaylists();
+  renderAlbums();
   renderTracks();
 };
 
@@ -223,27 +235,58 @@ const legacyAlbumGroups = (tracks) => {
   return [...albums.values()];
 };
 
-const populateAlbums = () => {
-  const all = document.createElement("option");
-  all.value = "";
-  all.textContent = "すべてのアルバム";
-  elements.albumFilter.replaceChildren(
-    all,
-    ...state.albums.map((album) => {
-      const option = document.createElement("option");
-      option.value = album.id;
-      option.textContent = album.discCount > 1
-        ? `${album.name}（${album.discCount}枚・${album.trackCount}曲）`
-        : album.name;
-      return option;
+const renderAlbums = () => {
+  const query = elements.albumSearch.value.trim().toLocaleLowerCase();
+  const albums = state.albums.filter((album) =>
+    album.name.toLocaleLowerCase().includes(query),
+  );
+  const allAlbums = {
+    id: "",
+    name: "すべてのアルバム",
+    trackCount: state.tracks.length,
+  };
+  const visibleAlbums = query
+    ? albums
+    : [allAlbums, ...albums];
+  elements.albumList.replaceChildren(
+    ...visibleAlbums.map((album) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className =
+        `album-item${album.id === state.currentAlbumId ? " active" : ""}`;
+      button.title = album.id
+        ? `アルバム「${album.name}」の曲を表示します`
+        : "選択中のプレイリストにあるすべてのアルバムの曲を表示します";
+      const copy = document.createElement("span");
+      const name = document.createElement("strong");
+      name.textContent = album.name;
+      copy.append(name);
+      if (album.discCount > 1) {
+        const discs = document.createElement("small");
+        discs.textContent = `${album.discCount}枚組`;
+        copy.append(discs);
+      }
+      const count = document.createElement("small");
+      count.textContent = album.trackCount;
+      button.append(copy, count);
+      button.addEventListener("click", () => selectAlbum(album.id));
+      return button;
     }),
   );
+};
+
+const selectAlbum = (albumId) => {
+  state.currentAlbumId = albumId;
+  state.renderLimit = 250;
+  elements.trackSearch.value = "";
+  renderAlbums();
+  renderTracks();
 };
 
 const renderTracks = () => {
   const query = elements.trackSearch.value.trim().toLocaleLowerCase();
   const selectedAlbum = state.albums.find(
-    (album) => album.id === elements.albumFilter.value,
+    (album) => album.id === state.currentAlbumId,
   );
   const tracksById = new Map(state.tracks.map((track) => [track.id, track]));
   const albumTracks = selectedAlbum
@@ -253,6 +296,7 @@ const renderTracks = () => {
     const haystack = `${track.name}\0${track.artist}\0${track.album}`.toLocaleLowerCase();
     return haystack.includes(query);
   });
+  elements.trackCount.textContent = state.visibleTracks.length;
   if (state.visibleTracks.length === 0) {
     const message = document.createElement("div");
     message.className = "empty-message";
@@ -358,6 +402,10 @@ const updateTrackDetails = (track) => {
   elements.artwork.hidden = true;
   elements.artworkFallback.hidden = false;
   elements.artwork.src = "";
+  elements.seekBar.value = "0";
+  elements.seekBar.disabled = true;
+  elements.currentTime.textContent = "現在 0:00";
+  elements.totalTime.textContent = "全長 —";
   if (track.artworkUrl) {
     elements.artwork.onload = () => {
       elements.artwork.hidden = false;
@@ -587,6 +635,7 @@ const renderCandidateList = () => {
 };
 
 const renderProgress = () => {
+  renderSeek();
   const candidates = state.analysis?.candidates;
   if (state.mode !== "loop" || !candidates?.length) {
     if (audio.duration) {
@@ -601,6 +650,30 @@ const renderProgress = () => {
     ? elapsed / candidate.loopEndSeconds
     : (elapsed - candidate.loopStartSeconds) % duration / duration;
   elements.loopProgress.style.width = `${Math.max(0, Math.min(position * 100, 100))}%`;
+};
+
+const renderSeek = () => {
+  const duration = Number.isFinite(audio.duration)
+    ? audio.duration
+    : state.analysis?.durationSeconds;
+  const current = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+  elements.seekBar.disabled = !Number.isFinite(duration) || duration <= 0;
+  elements.seekBar.value = duration > 0
+    ? String(Math.round(Math.min(current / duration, 1) * 1000))
+    : "0";
+  elements.currentTime.textContent = `現在 ${formatTime(current)}`;
+  elements.totalTime.textContent = `全長 ${formatTime(duration)}`;
+};
+
+const seekAudio = () => {
+  const duration = Number.isFinite(audio.duration)
+    ? audio.duration
+    : state.analysis?.durationSeconds;
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return;
+  }
+  audio.currentTime = Number(elements.seekBar.value) / 1000 * duration;
+  renderProgress();
 };
 
 const playAdjacent = async (direction) => {

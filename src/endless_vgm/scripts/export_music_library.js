@@ -1,6 +1,7 @@
 ObjC.import("Foundation");
 
 const automationOptions = {timeout: 3600};
+const ALL_TRACKS_NAME = "すべての楽曲";
 
 const nfc = (value) => {
   if (value === null || value === undefined) return "";
@@ -32,6 +33,19 @@ const waitForPlaylists = (app) => {
     delay(1);
   }
   throw new Error("Music.appのプレイリストを取得できませんでした");
+};
+
+const waitForLibraryPlaylist = (app) => {
+  for (let elapsed = 0; elapsed < 60; elapsed += 1) {
+    try {
+      const playlists = app.libraryPlaylists();
+      if (playlists.length > 0) return playlists[0];
+    } catch (error) {
+      // Music.appが起動処理中の場合は待機する。
+    }
+    delay(1);
+  }
+  throw new Error("Music.appのライブラリを取得できませんでした");
 };
 
 const bulkProperties = (playlist, tracks) => {
@@ -84,19 +98,31 @@ const parseTrack = (track, properties) => {
   };
 };
 
+const parsePlaylist = (playlist, name, isLibrary) => {
+  const tracks = playlist.tracks(automationOptions);
+  const properties = bulkProperties(playlist, tracks);
+  return {
+    name,
+    is_library: isLibrary,
+    tracks: tracks.map((track, index) =>
+      parseTrack(track, properties ? properties[index] : trackProperties(track)),
+    ),
+  };
+};
+
 function run() {
   const app = Application("Music");
   app.includeStandardAdditions = true;
+  const library = waitForLibraryPlaylist(app);
+  const playlists = waitForPlaylists(app).filter(
+    (playlist) => playlist.name() !== ALL_TRACKS_NAME,
+  );
   return JSON.stringify(
-    waitForPlaylists(app).map((playlist) => {
-      const tracks = playlist.tracks(automationOptions);
-      const properties = bulkProperties(playlist, tracks);
-      return {
-        name: nfc(playlist.name()),
-        tracks: tracks.map((track, index) =>
-          parseTrack(track, properties ? properties[index] : trackProperties(track)),
-        ),
-      };
-    }),
+    [
+      parsePlaylist(library, ALL_TRACKS_NAME, true),
+      ...playlists.map((playlist) =>
+        parsePlaylist(playlist, nfc(playlist.name()), false),
+      ),
+    ],
   );
 }

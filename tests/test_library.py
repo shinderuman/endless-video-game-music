@@ -38,6 +38,7 @@ def test_loads_export_cache_and_builds_public_urls(tmp_path) -> None:
         "name": "GAME",
         "trackCount": 1,
         "availableTrackCount": 1,
+        "isLibrary": False,
     }
     track = playlist.tracks[0]
     assert track.name == "Opening"
@@ -84,6 +85,30 @@ def test_loads_playlist_with_null_tracks_as_empty(tmp_path) -> None:
     playlist = library.playlist("Favorites")
     assert playlist is not None
     assert playlist.tracks == ()
+
+
+def test_marks_music_library_as_all_tracks_playlist(tmp_path) -> None:
+    cache = tmp_path / "library.json"
+    cache.write_text(
+        json.dumps(
+            [
+                {
+                    "name": "すべての楽曲",
+                    "is_library": True,
+                    "tracks": [],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    library = MusicLibrary(cache, tmp_path / "export.js", fallback_cache_path=tmp_path / "none")
+
+    library.load()
+
+    playlist = library.playlist("すべての楽曲")
+    assert playlist is not None
+    assert playlist.is_library is True
+    assert playlist.summary_dict()["isLibrary"] is True
 
 
 def test_infers_disc_and_track_numbers_from_filename(tmp_path) -> None:
@@ -137,6 +162,36 @@ def test_load_or_refresh_exports_on_clean_install(tmp_path) -> None:
 
     assert len(calls) == 1
     assert library.playlist("GAME") is not None
+
+
+def test_load_or_refresh_updates_cache_without_all_tracks(tmp_path) -> None:
+    cache = tmp_path / "library.json"
+    cache.write_text(json.dumps(playlist_payload("")), encoding="utf-8")
+    payload = [
+        {
+            "name": "すべての楽曲",
+            "is_library": True,
+            "tracks": [],
+        },
+        *playlist_payload(""),
+    ]
+    calls: list[list[str]] = []
+
+    def runner(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    library = MusicLibrary(
+        cache,
+        tmp_path / "export.js",
+        fallback_cache_path=tmp_path / "none",
+        command_runner=runner,
+    )
+
+    library.load_or_refresh()
+
+    assert len(calls) == 1
+    assert library.playlist("すべての楽曲").is_library is True
 
 
 def test_refresh_runs_export_and_replaces_cache(tmp_path) -> None:

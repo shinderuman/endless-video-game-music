@@ -42,10 +42,12 @@ class Track:
 class Playlist:
     name: str
     tracks: tuple[Track, ...]
+    is_library: bool = False
 
     def summary_dict(self) -> dict[str, object]:
         return {
             "name": self.name,
             "trackCount": len(self.tracks),
             "availableTrackCount": sum(track.available for track in self.tracks),
+            "isLibrary": self.is_library,
         }
