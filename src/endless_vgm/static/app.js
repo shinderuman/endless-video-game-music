@@ -2,6 +2,7 @@ import {LoopAudioPlayer} from "./loop-audio-player.js";
 
 const FADE_SECONDS = 4;
 const MAX_LOOP_CANDIDATES = 20;
+const DISCS_PER_GROUP = 3;
 const PANEL_WIDTH_STORAGE_KEY = "endless-vgm-panel-widths";
 const LIBRARY_STATE_STORAGE_KEY = "endless-vgm-library-state";
 const LIBRARY_COLLATOR = new Intl.Collator("ja", {
@@ -23,6 +24,7 @@ const state = {
   currentPlaylist: "",
   currentAlbumId: "",
   currentTrackId: null,
+  currentDiscGroupStart: 1,
   playlistSort: {key: "title", direction: "asc"},
   albumSort: {key: "title", direction: "asc"},
   mode: "loop",
@@ -56,6 +58,7 @@ const elements = {
   albumList: document.querySelector("#album-list"),
   trackCount: document.querySelector("#track-count"),
   trackSearch: document.querySelector("#track-search"),
+  discGroupNav: document.querySelector("#disc-group-nav"),
   trackList: document.querySelector("#track-list"),
   artwork: document.querySelector("#artwork"),
   artworkFallback: document.querySelector("#artwork-fallback"),
@@ -334,6 +337,10 @@ const restoreLibraryState = () => {
       typeof saved.albumId === "string" ? saved.albumId : "";
     state.currentTrackId =
       typeof saved.trackId === "string" ? saved.trackId : null;
+    state.currentDiscGroupStart =
+      Number.isInteger(saved.discGroupStart) && saved.discGroupStart > 0
+        ? saved.discGroupStart
+        : 1;
     elements.playlistSearch.value =
       typeof saved.playlistSearch === "string" ? saved.playlistSearch : "";
     elements.albumSearch.value =
@@ -355,6 +362,7 @@ const saveLibraryState = () => {
         playlist: state.currentPlaylist,
         albumId: state.currentAlbumId,
         trackId: state.currentTrackId,
+        discGroupStart: state.currentDiscGroupStart,
         playlistSearch: elements.playlistSearch.value,
         albumSearch: elements.albumSearch.value,
         trackSearch: elements.trackSearch.value,
@@ -489,11 +497,13 @@ const selectPlaylist = async (name, restoring = false) => {
   if (!restoring || playlistChanged) {
     state.currentAlbumId = "";
     state.currentTrackId = null;
+    state.currentDiscGroupStart = 1;
     elements.albumSearch.value = "";
     elements.trackSearch.value = "";
   }
   if (!state.albums.some((album) => album.id === state.currentAlbumId)) {
     state.currentAlbumId = "";
+    state.currentDiscGroupStart = 1;
   }
   if (!state.tracks.some((track) => track.id === state.currentTrackId)) {
     state.currentTrackId = null;
@@ -580,6 +590,7 @@ const renderAlbums = () => {
 
 const selectAlbum = (albumId) => {
   state.currentAlbumId = albumId;
+  state.currentDiscGroupStart = 1;
   state.renderLimit = 250;
   elements.trackSearch.value = "";
   renderAlbums();
@@ -593,11 +604,21 @@ const renderTracks = () => {
   const selectedAlbum = state.albums.find(
     (album) => album.id === state.currentAlbumId,
   );
+  renderDiscGroupNav(selectedAlbum, query.length > 0);
   const tracksById = new Map(state.tracks.map((track) => [track.id, track]));
   const albumTracks = selectedAlbum
     ? selectedAlbum.trackIds.map((trackId) => tracksById.get(trackId)).filter(Boolean)
     : state.tracks;
-  state.visibleTracks = albumTracks.filter((track) => {
+  const groupedTracks = selectedAlbum?.discCount > DISCS_PER_GROUP && !query
+    ? albumTracks.filter((track) => {
+      const discNumber = track.discNumber ?? 1;
+      return (
+        discNumber >= state.currentDiscGroupStart
+        && discNumber < state.currentDiscGroupStart + DISCS_PER_GROUP
+      );
+    })
+    : albumTracks;
+  state.visibleTracks = groupedTracks.filter((track) => {
     const haystack = `${track.name}\0${track.artist}\0${track.album}`.toLocaleLowerCase();
     return haystack.includes(query);
   });
@@ -669,6 +690,49 @@ const renderTracks = () => {
     trackNodes.push(loadMore);
   }
   elements.trackList.replaceChildren(...trackNodes);
+};
+
+const renderDiscGroupNav = (album, searching) => {
+  if (!album || album.discCount <= DISCS_PER_GROUP || searching) {
+    elements.discGroupNav.hidden = true;
+    elements.discGroupNav.replaceChildren();
+    return;
+  }
+  const lastGroupStart =
+    Math.floor((album.discCount - 1) / DISCS_PER_GROUP) * DISCS_PER_GROUP + 1;
+  if (state.currentDiscGroupStart > lastGroupStart) {
+    state.currentDiscGroupStart = 1;
+  }
+  const buttons = [];
+  for (let start = 1; start <= album.discCount; start += DISCS_PER_GROUP) {
+    const end = Math.min(start + DISCS_PER_GROUP - 1, album.discCount);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className =
+      `disc-group-button${start === state.currentDiscGroupStart ? " active" : ""}`;
+    button.textContent = `DISC ${start}–${end}`;
+    button.title = `Disc ${start}から${end}までの曲を表示します`;
+    button.setAttribute(
+      "aria-label",
+      `Disc ${start}から${end}までを表示`,
+    );
+    button.setAttribute(
+      "aria-pressed",
+      String(start === state.currentDiscGroupStart),
+    );
+    button.addEventListener("click", () => selectDiscGroup(start));
+    buttons.push(button);
+  }
+  elements.discGroupNav.replaceChildren(...buttons);
+  elements.discGroupNav.hidden = false;
+};
+
+const selectDiscGroup = (start) => {
+  state.currentDiscGroupStart = start;
+  state.renderLimit = 250;
+  renderTracks();
+  elements.trackList.scrollTop = 0;
+  saveLibraryState();
 };
 
 const resetTrackLimit = () => {

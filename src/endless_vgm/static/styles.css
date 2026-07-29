@@ -315,6 +315,40 @@ body.resizing-panels * {
   max-height: calc(100vh - 230px);
 }
 
+.disc-group-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.disc-group-nav[hidden] {
+  display: none;
+}
+
+.disc-group-button {
+  min-width: 0;
+  padding: 7px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.disc-group-button:hover,
+.disc-group-button.active {
+  border-color: rgba(255, 79, 147, 0.5);
+  background: rgba(255, 79, 147, 0.1);
+  color: #fff;
+}
+
+.track-panel:has(.disc-group-nav:not([hidden])) .track-list {
+  max-height: calc(100vh - 272px);
+}
+
 .playlist-item,
 .album-item,
 .track-item {

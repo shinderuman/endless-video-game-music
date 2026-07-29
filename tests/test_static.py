@@ -107,6 +107,26 @@ def test_playlist_and_album_changes_reset_track_scroll() -> None:
     assert script.count("elements.trackList.scrollTop = 0") >= 2
 
 
+def test_large_albums_can_be_filtered_in_three_disc_groups() -> None:
+    markup = player_markup()
+    script = static_asset("app.js")
+    stylesheet = static_asset("styles.css")
+
+    assert markup.elements["disc-group-nav"]["hidden"] is None
+    assert "const DISCS_PER_GROUP = 3" in script
+    assert "album.discCount <= DISCS_PER_GROUP" in script
+    assert "start += DISCS_PER_GROUP" in script
+    assert "button.textContent = `DISC ${start}–${end}`" in script
+    assert "renderDiscGroupNav(selectedAlbum, query.length > 0)" in script
+    assert "album.discCount <= DISCS_PER_GROUP || searching" in script
+    assert "selectedAlbum?.discCount > DISCS_PER_GROUP && !query" in script
+    assert "discNumber >= state.currentDiscGroupStart" in script
+    assert "discNumber < state.currentDiscGroupStart + DISCS_PER_GROUP" in script
+    assert "discGroupStart: state.currentDiscGroupStart" in script
+    assert "selectDiscGroup(start)" in script
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in stylesheet
+
+
 def test_refined_loop_candidates_are_primary_and_rank_zero_is_default() -> None:
     markup = player_markup()
     script = static_asset("app.js")
