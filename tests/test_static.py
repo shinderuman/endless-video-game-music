@@ -78,6 +78,35 @@ def test_music_refresh_shows_loading_state_and_disables_button() -> None:
     assert "cursor: not-allowed" in stylesheet
 
 
+def test_playlist_and_album_sort_controls_toggle_title_and_count_order() -> None:
+    markup = player_markup()
+    script = static_asset("app.js")
+    stylesheet = static_asset("styles.css")
+
+    assert {
+        "playlist-sort-title",
+        "playlist-sort-count",
+        "album-sort-title",
+        "album-sort-count",
+    } <= markup.elements.keys()
+    assert 'playlistSort: {key: "title", direction: "asc"}' in script
+    assert 'albumSort: {key: "title", direction: "asc"}' in script
+    assert 'toggleLibrarySort("playlist", "title")' in script
+    assert 'toggleLibrarySort("playlist", "count")' in script
+    assert 'toggleLibrarySort("album", "title")' in script
+    assert 'toggleLibrarySort("album", "count")' in script
+    assert "LIBRARY_COLLATOR.compare" in script
+    assert "playlistSort: state.playlistSort" in script
+    assert "albumSort: state.albumSort" in script
+    assert ".sort-controls button.active" in stylesheet
+
+
+def test_playlist_and_album_changes_reset_track_scroll() -> None:
+    script = static_asset("app.js")
+
+    assert script.count("elements.trackList.scrollTop = 0") >= 2
+
+
 def test_refined_loop_candidates_are_primary_and_rank_zero_is_default() -> None:
     markup = player_markup()
     script = static_asset("app.js")

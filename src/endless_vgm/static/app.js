@@ -4,6 +4,10 @@ const FADE_SECONDS = 4;
 const MAX_LOOP_CANDIDATES = 20;
 const PANEL_WIDTH_STORAGE_KEY = "endless-vgm-panel-widths";
 const LIBRARY_STATE_STORAGE_KEY = "endless-vgm-library-state";
+const LIBRARY_COLLATOR = new Intl.Collator("ja", {
+  numeric: true,
+  sensitivity: "base",
+});
 const PANEL_WIDTHS = {
   playlist: {property: "--playlist-width", min: 170, max: 480},
   album: {property: "--album-width", min: 200, max: 640},
@@ -19,6 +23,8 @@ const state = {
   currentPlaylist: "",
   currentAlbumId: "",
   currentTrackId: null,
+  playlistSort: {key: "title", direction: "asc"},
+  albumSort: {key: "title", direction: "asc"},
   mode: "loop",
   analysis: null,
   candidateIndex: 0,
@@ -40,9 +46,13 @@ const elements = {
   refreshLibrary: document.querySelector("#refresh-library"),
   playlistCount: document.querySelector("#playlist-count"),
   playlistSearch: document.querySelector("#playlist-search"),
+  playlistSortTitle: document.querySelector("#playlist-sort-title"),
+  playlistSortCount: document.querySelector("#playlist-sort-count"),
   playlistList: document.querySelector("#playlist-list"),
   albumCount: document.querySelector("#album-count"),
   albumSearch: document.querySelector("#album-search"),
+  albumSortTitle: document.querySelector("#album-sort-title"),
+  albumSortCount: document.querySelector("#album-sort-count"),
   albumList: document.querySelector("#album-list"),
   trackCount: document.querySelector("#track-count"),
   trackSearch: document.querySelector("#track-search"),
@@ -103,6 +113,72 @@ const formatTime = (seconds) => {
   return `${minutes}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
 };
 
+const restoredSort = (saved) => {
+  const key = saved?.key;
+  const direction = saved?.direction;
+  if (
+    ["title", "count"].includes(key)
+    && ["asc", "desc"].includes(direction)
+  ) {
+    return {key, direction};
+  }
+  return {key: "title", direction: "asc"};
+};
+
+const sortLibraryItems = (
+  items,
+  sort,
+  titleOf,
+  countOf,
+  keepFirst = () => false,
+) => [...items].sort((left, right) => {
+  if (keepFirst(left) !== keepFirst(right)) {
+    return keepFirst(left) ? -1 : 1;
+  }
+  let comparison = sort.key === "count"
+    ? Number(countOf(left) ?? 0) - Number(countOf(right) ?? 0)
+    : LIBRARY_COLLATOR.compare(titleOf(left), titleOf(right));
+  if (comparison === 0) {
+    comparison = LIBRARY_COLLATOR.compare(titleOf(left), titleOf(right));
+  }
+  return sort.direction === "desc" ? -comparison : comparison;
+});
+
+const toggleLibrarySort = (library, key) => {
+  const stateKey = `${library}Sort`;
+  const current = state[stateKey];
+  state[stateKey] = {
+    key,
+    direction:
+      current.key === key && current.direction === "asc" ? "desc" : "asc",
+  };
+  if (library === "playlist") {
+    renderPlaylists();
+  } else {
+    renderAlbums();
+  }
+  saveLibraryState();
+};
+
+const renderSortControls = (library) => {
+  const sort = state[`${library}Sort`];
+  const controls = [
+    ["title", elements[`${library}SortTitle`], "タイトル"],
+    ["count", elements[`${library}SortCount`], "曲数"],
+  ];
+  for (const [key, button, label] of controls) {
+    const active = sort.key === key;
+    const direction = active ? sort.direction : "none";
+    const arrow = direction === "asc" ? "↑" : direction === "desc" ? "↓" : "↕";
+    const nextDirection =
+      active && sort.direction === "asc" ? "降順" : "昇順";
+    button.textContent = `${label} ${arrow}`;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+    button.title = `${label}の${nextDirection}へ切り替えます`;
+  }
+};
+
 const refinementLabel = (method) => ({
   pmlDurationLocalWaveform: "標準",
   loopMusicEndpointPair: "位置調整",
@@ -158,10 +234,26 @@ const bindEvents = () => {
     renderPlaylists();
     saveLibraryState();
   });
+  elements.playlistSortTitle.addEventListener(
+    "click",
+    () => toggleLibrarySort("playlist", "title"),
+  );
+  elements.playlistSortCount.addEventListener(
+    "click",
+    () => toggleLibrarySort("playlist", "count"),
+  );
   elements.albumSearch.addEventListener("input", () => {
     renderAlbums();
     saveLibraryState();
   });
+  elements.albumSortTitle.addEventListener(
+    "click",
+    () => toggleLibrarySort("album", "title"),
+  );
+  elements.albumSortCount.addEventListener(
+    "click",
+    () => toggleLibrarySort("album", "count"),
+  );
   elements.trackSearch.addEventListener("input", () => {
     resetTrackLimit();
     saveLibraryState();
@@ -248,6 +340,8 @@ const restoreLibraryState = () => {
       typeof saved.albumSearch === "string" ? saved.albumSearch : "";
     elements.trackSearch.value =
       typeof saved.trackSearch === "string" ? saved.trackSearch : "";
+    state.playlistSort = restoredSort(saved.playlistSort);
+    state.albumSort = restoredSort(saved.albumSort);
   } catch {
     // 保存値が壊れている場合は初期状態を使う。
   }
@@ -264,6 +358,8 @@ const saveLibraryState = () => {
         playlistSearch: elements.playlistSearch.value,
         albumSearch: elements.albumSearch.value,
         trackSearch: elements.trackSearch.value,
+        playlistSort: state.playlistSort,
+        albumSort: state.albumSort,
       }),
     );
   } catch {
@@ -353,9 +449,16 @@ const setLibraryLoading = (loading) => {
 
 const renderPlaylists = () => {
   const query = elements.playlistSearch.value.trim().toLocaleLowerCase();
-  const playlists = state.playlists.filter((playlist) =>
-    playlist.name.toLocaleLowerCase().includes(query),
+  const playlists = sortLibraryItems(
+    state.playlists.filter((playlist) =>
+      playlist.name.toLocaleLowerCase().includes(query),
+    ),
+    state.playlistSort,
+    (playlist) => playlist.name,
+    (playlist) => playlist.availableTrackCount,
+    (playlist) => playlist.isLibrary,
   );
+  renderSortControls("playlist");
   elements.playlistList.replaceChildren(
     ...playlists.map((playlist) => {
       const button = document.createElement("button");
@@ -382,6 +485,7 @@ const selectPlaylist = async (name, restoring = false) => {
   state.tracks = payload.tracks;
   state.albums = payload.albums ?? legacyAlbumGroups(state.tracks);
   state.renderLimit = 250;
+  elements.trackList.scrollTop = 0;
   if (!restoring || playlistChanged) {
     state.currentAlbumId = "";
     state.currentTrackId = null;
@@ -430,9 +534,15 @@ const legacyAlbumGroups = (tracks) => {
 
 const renderAlbums = () => {
   const query = elements.albumSearch.value.trim().toLocaleLowerCase();
-  const albums = state.albums.filter((album) =>
-    album.name.toLocaleLowerCase().includes(query),
+  const albums = sortLibraryItems(
+    state.albums.filter((album) =>
+      album.name.toLocaleLowerCase().includes(query),
+    ),
+    state.albumSort,
+    (album) => album.name,
+    (album) => album.trackCount,
   );
+  renderSortControls("album");
   const allAlbums = {
     id: "",
     name: "すべてのアルバム",
@@ -474,6 +584,7 @@ const selectAlbum = (albumId) => {
   elements.trackSearch.value = "";
   renderAlbums();
   renderTracks();
+  elements.trackList.scrollTop = 0;
   saveLibraryState();
 };
 

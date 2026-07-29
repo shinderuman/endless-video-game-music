@@ -48,6 +48,18 @@
               title="プレイリスト名で表示を絞り込みます"
             >
           </label>
+          <div class="sort-controls" role="group" aria-label="プレイリストの並び順">
+            <button
+              id="playlist-sort-title"
+              type="button"
+              title="プレイリストをタイトルの降順へ切り替えます"
+            >タイトル ↑</button>
+            <button
+              id="playlist-sort-count"
+              type="button"
+              title="プレイリストを曲数の昇順で並べます"
+            >曲数 ↕</button>
+          </div>
           <div id="playlist-list" class="playlist-list" aria-live="polite"></div>
         </aside>
         <div
@@ -79,6 +91,18 @@
               title="アルバム名で表示を絞り込みます"
             >
           </label>
+          <div class="sort-controls" role="group" aria-label="アルバムの並び順">
+            <button
+              id="album-sort-title"
+              type="button"
+              title="アルバムをタイトルの降順へ切り替えます"
+            >タイトル ↑</button>
+            <button
+              id="album-sort-count"
+              type="button"
+              title="アルバムを曲数の昇順で並べます"
+            >曲数 ↕</button>
+          </div>
           <div id="album-list" class="album-list" aria-live="polite"></div>
         </aside>
         <div
@@ -282,6 +306,6 @@
         </section>
       </main>
     </div>
-    <script type="module" src="/app.js?v=22"></script>
+    <script type="module" src="/app.js?v=23"></script>
   </body>
 </html>

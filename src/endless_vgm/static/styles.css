@@ -274,6 +274,30 @@ body.resizing-panels * {
   font-size: 12px;
 }
 
+.sort-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.sort-controls button {
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.sort-controls button:hover,
+.sort-controls button.active {
+  border-color: rgba(255, 79, 147, 0.5);
+  background: rgba(255, 79, 147, 0.1);
+  color: #fff;
+}
+
 .playlist-list,
 .album-list,
 .track-list {
@@ -284,7 +308,7 @@ body.resizing-panels * {
 
 .playlist-list,
 .album-list {
-  max-height: calc(100vh - 210px);
+  max-height: calc(100vh - 250px);
 }
 
 .track-list {
