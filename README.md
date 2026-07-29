@@ -19,6 +19,7 @@ Music.appに登録されたローカル音源ファイルを再生します。
 ```sh
 brew install uv ffmpeg
 make setup
+make library
 make open
 ```
 
@@ -35,9 +36,12 @@ make run
 make run PORT=9000
 ```
 
-初回起動時はMusic.appからプレイリストを自動取得します。macOSから確認された場合は、
-サーバーを起動したターミナルによるMusic.appの操作を許可してください。画面右上の
-「Musicを再読込」からライブラリを更新できます。
+`make library`はMusic.appの全ライブラリと全プレイリストをキャッシュへ一括取得します。
+曲数によっては数十分かかります。macOSから確認された場合は、ターミナルによる
+Music.appの操作を許可してください。Music.appの内容を更新したときも同じコマンドを
+実行します。通常起動では完成済みキャッシュを読み込むため、この処理を行いません。
+ターミナルには進捗率とETAを同じ行で表示します。進捗と実行結果は
+`~/Library/Caches/Endless Video Game Music/library-refresh.log`にも保存されます。
 
 ## 主な機能
 
@@ -55,6 +59,7 @@ make run PORT=9000
 
 ```sh
 make doctor  # 外部依存を確認
+make library # Music.appライブラリを更新
 make test    # pytest
 make lint    # ruff
 make format  # ruff format

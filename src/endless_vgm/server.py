@@ -69,6 +69,8 @@ class PlayerRequestHandler(BaseHTTPRequestHandler):
 
     def _handle_get(self, *, head_only: bool = False) -> None:
         parsed = urlsplit(self.path)
+        if parsed.path in {"/api/status", "/api/playlists", "/api/playlist"}:
+            self.server.app.library.reload_if_changed()
         if parsed.path == "/api/status":
             self._send_json(
                 {
@@ -133,15 +135,6 @@ class PlayerRequestHandler(BaseHTTPRequestHandler):
 
     def _handle_post(self) -> None:
         parsed = urlsplit(self.path)
-        if parsed.path == "/api/library/refresh":
-            self.server.app.library.refresh()
-            self._send_json(
-                {
-                    "playlistCount": len(self.server.app.library.playlists()),
-                    "refreshed": True,
-                }
-            )
-            return
         track_route = _track_route(parsed.path)
         if track_route is not None and track_route[1] in {"analyze", "reanalyze"}:
             track = self.server.app.library.track(track_route[0])

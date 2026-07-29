@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import urllib.error
 import urllib.request
@@ -127,6 +128,15 @@ def test_http_api_static_and_audio_range(tmp_path) -> None:
         with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(f"{base}/api/playlist?name=UNKNOWN")
         assert error.value.code == 404
+
+        original_mtime = cache.stat().st_mtime_ns
+        cache.write_text(
+            json.dumps([{"name": "UPDATED", "tracks": []}]),
+            encoding="utf-8",
+        )
+        os.utime(cache, ns=(original_mtime + 1, original_mtime + 1))
+        updated = request_json(f"{base}/api/playlists")
+        assert [item["name"] for item in updated["playlists"]] == ["UPDATED"]
     finally:
         server.shutdown()
         server.server_close()

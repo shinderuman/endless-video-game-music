@@ -65,17 +65,13 @@ def test_player_has_full_track_seek_control() -> None:
     assert "candidate.loopEndSeconds" in script
 
 
-def test_music_refresh_shows_loading_state_and_disables_button() -> None:
+def test_long_music_refresh_is_not_exposed_as_a_gui_action() -> None:
+    markup = player_markup()
     script = static_asset("app.js")
-    stylesheet = static_asset("styles.css")
 
-    assert "setLibraryLoading(true)" in script
-    assert "setLibraryLoading(false)" in script
-    assert "elements.refreshLibrary.disabled = loading" in script
-    assert '"読み込み中"' in script
-    assert ".quiet-button.loading::before" in stylesheet
-    assert ".quiet-button:disabled" in stylesheet
-    assert "cursor: not-allowed" in stylesheet
+    assert "refresh-library" not in markup.elements
+    assert "/api/library/refresh" not in script
+    assert "make library" in script
 
 
 def test_playlist_and_album_sort_controls_toggle_title_and_count_order() -> None:

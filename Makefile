@@ -1,8 +1,9 @@
 UV ?= uv
 HOST ?= 127.0.0.1
 PORT ?= 8765
+LIBRARY_LOG ?= $(HOME)/Library/Caches/Endless Video Game Music/library-refresh.log
 
-.PHONY: setup doctor run open test lint format check
+.PHONY: setup doctor library run open test lint format check
 
 setup:
 	@command -v $(UV) >/dev/null || { \
@@ -24,6 +25,9 @@ doctor:
 	$(UV) run pymusiclooper --version
 	$(UV) run endless-vgm --help >/dev/null
 	@echo "依存関係は利用可能です。"
+
+library:
+	$(UV) run endless-vgm --refresh-library --library-log "$(LIBRARY_LOG)"
 
 run:
 	$(UV) run endless-vgm -H $(HOST) -p $(PORT)

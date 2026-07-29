@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
 
 import pytest
 
-from endless_vgm.library import MusicLibrary
+from endless_vgm.library import MusicLibrary, run_command_with_progress
 
 
 def playlist_payload(audio_path: str) -> list[dict[str, object]]:
@@ -188,6 +190,28 @@ def test_load_or_refresh_uses_existing_cache_without_blocking_startup(tmp_path) 
     assert library.playlist("GAME") is not None
 
 
+def test_reload_if_changed_replaces_in_memory_library(tmp_path) -> None:
+    cache = tmp_path / "library.json"
+    cache.write_text(json.dumps(playlist_payload("")), encoding="utf-8")
+    library = MusicLibrary(
+        cache,
+        tmp_path / "export.js",
+        fallback_cache_path=tmp_path / "none",
+    )
+    library.load()
+    original_mtime = cache.stat().st_mtime_ns
+    cache.write_text(
+        json.dumps([{"name": "UPDATED", "tracks": []}]),
+        encoding="utf-8",
+    )
+    os.utime(cache, ns=(original_mtime + 1, original_mtime + 1))
+
+    assert library.reload_if_changed() is True
+    assert library.playlist("GAME") is None
+    assert library.playlist("UPDATED") is not None
+    assert library.reload_if_changed() is False
+
+
 def test_refresh_runs_export_and_replaces_cache(tmp_path) -> None:
     audio = tmp_path / "track.aac"
     audio.write_bytes(b"audio")
@@ -226,3 +250,59 @@ def test_refresh_reports_music_export_error(tmp_path) -> None:
 
     with pytest.raises(RuntimeError, match="Music access denied"):
         library.refresh()
+
+
+def test_refresh_can_stream_progress_to_terminal(tmp_path) -> None:
+    received: dict[str, object] = {}
+
+    def progress_runner(
+        command: list[str],
+        **options: object,
+    ) -> subprocess.CompletedProcess[str]:
+        received.update(options)
+        return subprocess.CompletedProcess(command, 0, "[]", "")
+
+    library = MusicLibrary(
+        tmp_path / "library.json",
+        tmp_path / "export.js",
+        fallback_cache_path=tmp_path / "none",
+        progress_runner=progress_runner,
+    )
+
+    library.refresh(show_progress=True)
+
+    assert received["timeout"] == 3600
+    assert received["log_path"] is None
+
+
+def test_progress_runner_renders_carriage_return_eta_and_writes_log(
+    capsys,
+    tmp_path,
+) -> None:
+    log_path = tmp_path / "refresh.log"
+    completed = run_command_with_progress(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "print('進捗 0%: 準備中', file=sys.stderr); "
+                "print('進捗 50.5%: 5 / 10曲', file=sys.stderr); "
+                "print('進捗 100%: 完了', file=sys.stderr); "
+                "print('[]')"
+            ),
+        ],
+        timeout=10,
+        log_path=log_path,
+    )
+
+    assert completed.returncode == 0
+    assert completed.stdout.strip() == "[]"
+    terminal = capsys.readouterr().out
+    assert "\r進捗 50.5%: 5 / 10曲 | ETA " in terminal
+    assert "\r進捗 100%: 完了 | ETA 00:00" in terminal
+    saved = log_path.read_text(encoding="utf-8")
+    assert "\r" not in saved
+    assert "進捗 0%: 準備中\n" in saved
+    assert "進捗 50.5%: 5 / 10曲\n" in saved
+    assert "進捗 100%: 完了\n" in saved

@@ -45,7 +45,6 @@ const elements = {
   panelResizers: [...document.querySelectorAll(".panel-resizer")],
   serverDot: document.querySelector("#server-dot"),
   serverMessage: document.querySelector("#server-message"),
-  refreshLibrary: document.querySelector("#refresh-library"),
   playlistCount: document.querySelector("#playlist-count"),
   playlistSearch: document.querySelector("#playlist-search"),
   playlistSortTitle: document.querySelector("#playlist-sort-title"),
@@ -263,7 +262,6 @@ const bindEvents = () => {
   });
   elements.seekBar.addEventListener("input", seekAudio);
   elements.loopSeekBar.addEventListener("input", seekLoopAudio);
-  elements.refreshLibrary.addEventListener("click", refreshLibrary);
   elements.modeNormal.addEventListener("click", () => setMode("normal"));
   elements.modeLoop.addEventListener("click", () => setMode("loop"));
   elements.candidatePicker.addEventListener("click", toggleCandidatePanel);
@@ -419,9 +417,9 @@ const loadPlaylists = async () => {
   elements.playlistCount.textContent = state.playlists.length;
   renderPlaylists();
   if (state.playlists.length === 0) {
-    elements.serverMessage.textContent = "Music.appの読み込み許可が必要です";
+    elements.serverMessage.textContent = "Musicライブラリが未取得です";
     elements.trackList.innerHTML =
-      '<div class="empty-message">Music.appの操作を許可して「Musicを再読込」を押してください。</div>';
+      '<div class="empty-message">ターミナルで「make library」を実行してください。</div>';
     return;
   }
   const preferred =
@@ -432,27 +430,6 @@ const loadPlaylists = async () => {
   } else if (state.playlists.length > 0) {
     await selectPlaylist(state.playlists[0].name, true);
   }
-};
-
-const refreshLibrary = async () => {
-  setLibraryLoading(true);
-  elements.serverMessage.textContent = "Music.appを読み込み中";
-  try {
-    await api("/api/library/refresh", {method: "POST"});
-    await loadPlaylists();
-    elements.serverMessage.textContent = "Music.appを再読込しました";
-  } catch (error) {
-    elements.serverMessage.textContent = `再読込失敗: ${error.message}`;
-  } finally {
-    setLibraryLoading(false);
-  }
-};
-
-const setLibraryLoading = (loading) => {
-  elements.refreshLibrary.disabled = loading;
-  elements.refreshLibrary.classList.toggle("loading", loading);
-  elements.refreshLibrary.setAttribute("aria-busy", String(loading));
-  elements.refreshLibrary.textContent = loading ? "読み込み中" : "Musicを再読込";
 };
 
 const renderPlaylists = () => {

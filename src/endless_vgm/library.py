@@ -5,7 +5,9 @@ import json
 import logging
 import re
 import subprocess
+import sys
 import threading
+import time
 import unicodedata
 from collections.abc import Callable
 from pathlib import Path
@@ -17,6 +19,94 @@ LOGGER = logging.getLogger(__name__)
 MUSIC_BRIDGE_CACHE = Path.home() / "Library" / "Caches" / "Music Bridge" / "library-cache.json"
 FILE_TRACK_PATTERN = re.compile(r"^(\d{1,2})-(\d{1,3})(?:\D|$)")
 LEADING_TRACK_PATTERN = re.compile(r"^(\d{1,3})(?:\s|[._-])")
+PROGRESS_PATTERN = re.compile(r"^進捗 (\d+(?:\.\d+)?)%: (.+)$")
+
+
+def run_command_with_progress(
+    command: list[str],
+    *,
+    timeout: float,
+    log_path: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+    started_at = time.monotonic()
+    if log_path is not None:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("", encoding="utf-8")
+
+    def read_stdout() -> None:
+        if process.stdout is not None:
+            stdout_parts.append(process.stdout.read())
+
+    def relay_stderr() -> None:
+        if process.stderr is None:
+            return
+        progress_active = False
+        for line in process.stderr:
+            stderr_parts.append(line)
+            message = line.rstrip("\r\n")
+            if log_path is not None:
+                with log_path.open("a", encoding="utf-8") as output:
+                    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                    output.write(f"{timestamp} {message}\n")
+            match = PROGRESS_PATTERN.fullmatch(message)
+            if match is None:
+                if progress_active:
+                    print(file=sys.stdout, flush=True)
+                    progress_active = False
+                print(message, file=sys.stdout, flush=True)
+                continue
+            percent = float(match.group(1))
+            elapsed = time.monotonic() - started_at
+            eta = _format_eta(elapsed, percent)
+            print(
+                f"\r{message} | ETA {eta}\033[K",
+                end="",
+                file=sys.stdout,
+                flush=True,
+            )
+            progress_active = True
+        if progress_active:
+            print(file=sys.stdout, flush=True)
+
+    stdout_thread = threading.Thread(target=read_stdout)
+    stderr_thread = threading.Thread(target=relay_stderr)
+    stdout_thread.start()
+    stderr_thread.start()
+    try:
+        returncode = process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+        raise
+    finally:
+        stdout_thread.join()
+        stderr_thread.join()
+    return subprocess.CompletedProcess(
+        command,
+        returncode,
+        "".join(stdout_parts),
+        "".join(stderr_parts),
+    )
+
+
+def _format_eta(elapsed: float, percent: float) -> str:
+    if percent <= 0:
+        return "--:--"
+    remaining = max(elapsed * (100 - min(percent, 100)) / percent, 0)
+    seconds = round(remaining)
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    if hours > 0:
+        return f"{hours:d}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
 
 
 class MusicLibrary:
@@ -27,14 +117,20 @@ class MusicLibrary:
         *,
         fallback_cache_path: Path = MUSIC_BRIDGE_CACHE,
         command_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+        progress_runner: Callable[..., subprocess.CompletedProcess[str]] = (
+            run_command_with_progress
+        ),
     ) -> None:
         self.cache_path = cache_path
         self.export_script = export_script
         self.fallback_cache_path = fallback_cache_path
         self.command_runner = command_runner
+        self.progress_runner = progress_runner
         self._lock = threading.RLock()
         self._playlists: dict[str, Playlist] = {}
         self._tracks: dict[str, Track] = {}
+        self._loaded_source: Path | None = None
+        self._loaded_mtime_ns: int | None = None
 
     def load(self) -> None:
         source = self.cache_path if self.cache_path.is_file() else self.fallback_cache_path
@@ -42,7 +138,21 @@ class MusicLibrary:
             LOGGER.info("Music library cache is not available yet")
             return
         self._replace_from_payload(json.loads(source.read_text(encoding="utf-8")))
+        with self._lock:
+            self._loaded_source = source
+            self._loaded_mtime_ns = source.stat().st_mtime_ns
         LOGGER.info("Loaded %d playlists from %s", len(self._playlists), source)
+
+    def reload_if_changed(self) -> bool:
+        source = self.cache_path if self.cache_path.is_file() else self.fallback_cache_path
+        if not source.is_file():
+            return False
+        modified_ns = source.stat().st_mtime_ns
+        with self._lock:
+            if source == self._loaded_source and modified_ns == self._loaded_mtime_ns:
+                return False
+        self.load()
+        return True
 
     def load_or_refresh(self) -> None:
         self.load()
@@ -56,17 +166,30 @@ class MusicLibrary:
                 error,
             )
 
-    def refresh(self) -> None:
-        result = self.command_runner(
-            ["osascript", "-l", "JavaScript", str(self.export_script)],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=3600,
-        )
+    def refresh(
+        self,
+        *,
+        show_progress: bool = False,
+        progress_log_path: Path | None = None,
+    ) -> None:
+        command = ["osascript", "-l", "JavaScript", str(self.export_script)]
+        if show_progress:
+            result = self.progress_runner(
+                command,
+                timeout=3600,
+                log_path=progress_log_path,
+            )
+        else:
+            result = self.command_runner(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=3600,
+            )
         if result.returncode != 0:
             stdout = result.stdout.strip()
-            stderr = result.stderr.strip()
+            stderr = (result.stderr or "").strip()
             LOGGER.error(
                 "Music.app export failed with exit code %d\nstdout: %s\nstderr: %s",
                 result.returncode,
@@ -78,10 +201,15 @@ class MusicLibrary:
         payload = json.loads(result.stdout)
         self._replace_from_payload(payload)
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        self.cache_path.write_text(
+        temporary_path = self.cache_path.with_suffix(f"{self.cache_path.suffix}.tmp")
+        temporary_path.write_text(
             json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             encoding="utf-8",
         )
+        temporary_path.replace(self.cache_path)
+        with self._lock:
+            self._loaded_source = self.cache_path
+            self._loaded_mtime_ns = self.cache_path.stat().st_mtime_ns
 
     def playlists(self) -> tuple[Playlist, ...]:
         with self._lock:
