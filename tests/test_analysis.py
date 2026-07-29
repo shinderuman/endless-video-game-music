@@ -6,6 +6,7 @@ import subprocess
 import pytest
 
 from endless_vgm.analysis import LoopAnalyzer, parse_candidates
+from endless_vgm.boundary import RefinedLoopBoundary
 from endless_vgm.models import Track
 
 
@@ -19,6 +20,22 @@ def make_track(path) -> Track:
         album_artist="Composer",
         album="Album",
         location=path,
+    )
+
+
+def make_analyzer(cache_dir, runner=subprocess.run) -> LoopAnalyzer:
+    return LoopAnalyzer(
+        cache_dir,
+        command_runner=runner,
+        boundary_finder=lambda _, loop_start, loop_end, __: [
+            RefinedLoopBoundary(
+                rank=0,
+                loop_start_sample=loop_start,
+                loop_end_sample=loop_end,
+                similarity=0.8,
+                method="pmlDurationLocalWaveform",
+            )
+        ],
     )
 
 
@@ -53,7 +70,7 @@ def test_analyze_sorts_candidates_and_uses_cache(tmp_path) -> None:
             "",
         )
 
-    analyzer = LoopAnalyzer(tmp_path / "analysis", command_runner=runner)
+    analyzer = make_analyzer(tmp_path / "analysis", runner)
 
     first = analyzer.analyze(make_track(audio))
     second = analyzer.analyze(make_track(audio))
@@ -61,13 +78,15 @@ def test_analyze_sorts_candidates_and_uses_cache(tmp_path) -> None:
     assert first == second
     assert first["candidateCount"] == 2
     assert first["candidates"][0]["score"] == 0.99
-    assert first["headCandidate"]["loopStartSample"] == 0
-    assert first["headCandidate"]["loopEndSample"] == 48000
+    assert first["candidates"][0]["rank"] == 1
+    assert first["refinedCandidates"][0]["loopStartSeconds"] == 1.0
+    assert first["refinedCandidates"][0]["loopEndSeconds"] == 3.0
+    assert first["refinedCandidates"][0]["method"] == "pmlDurationLocalWaveform"
     assert len(calls) == 2
 
 
 def test_analyze_rejects_unavailable_track(tmp_path) -> None:
-    analyzer = LoopAnalyzer(tmp_path / "analysis")
+    analyzer = make_analyzer(tmp_path / "analysis")
 
     with pytest.raises(FileNotFoundError):
         analyzer.analyze(make_track(tmp_path / "missing.m4a"))
@@ -87,7 +106,7 @@ def test_analyze_limits_candidates_to_top_twenty(tmp_path) -> None:
         )
         return subprocess.CompletedProcess(command, 0, output, "")
 
-    result = LoopAnalyzer(tmp_path / "analysis", command_runner=runner).analyze(
+    result = make_analyzer(tmp_path / "analysis", runner).analyze(
         make_track(audio)
     )
 
@@ -95,34 +114,14 @@ def test_analyze_limits_candidates_to_top_twenty(tmp_path) -> None:
     assert len(result["candidates"]) == 20
     assert result["candidates"][0]["score"] == 0.24
     assert result["candidates"][-1]["score"] == 0.05
-    assert result["headCandidate"]["loopStartSample"] == 0
-    assert result["headCandidate"]["score"] == 0
+    assert result["refinedCandidates"][0]["loopStartSeconds"] == 24 / 48_000
+    assert result["refinedCandidates"][0]["loopEndSeconds"] == (
+        24 + 48_000
+    ) / 48_000
+    assert result["refinedCandidates"][0]["score"] == 0.8
 
 
-def test_analyze_keeps_earliest_candidate_outside_score_limit(tmp_path) -> None:
-    audio = tmp_path / "music.m4a"
-    audio.write_bytes(b"audio")
-
-    def runner(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
-        if command[0] == "ffprobe":
-            output = '{"streams":[{"sample_rate":"48000"}]}'
-            return subprocess.CompletedProcess(command, 0, output, "")
-        output = "\n".join(
-            f"{index * 48000} {(index + 1) * 48000} 0.1 0.1 {index / 100}"
-            for index in range(25)
-        )
-        return subprocess.CompletedProcess(command, 0, output, "")
-
-    result = LoopAnalyzer(tmp_path / "analysis", command_runner=runner).analyze(
-        make_track(audio)
-    )
-
-    assert result["headCandidate"]["loopStartSeconds"] == 0
-    assert result["headCandidate"]["loopEndSeconds"] == 1
-    assert result["headCandidate"] not in result["candidates"]
-
-
-def test_analyze_invalidates_cache_without_head_candidate_version(tmp_path) -> None:
+def test_analyze_invalidates_older_cache_version(tmp_path) -> None:
     audio = tmp_path / "music.m4a"
     audio.write_bytes(b"audio")
     cache_dir = tmp_path / "analysis"
@@ -147,7 +146,28 @@ def test_analyze_invalidates_cache_without_head_candidate_version(tmp_path) -> N
             return subprocess.CompletedProcess(command, 0, output, "")
         return subprocess.CompletedProcess(command, 0, "0 48000 0.1 0.1 0.8\n", "")
 
-    result = LoopAnalyzer(cache_dir, command_runner=runner).analyze(make_track(audio))
+    result = make_analyzer(cache_dir, runner).analyze(make_track(audio))
 
-    assert result["headCandidate"]["loopStartSeconds"] == 0
+    assert result["refinedCandidates"][0]["loopStartSeconds"] == 0
     assert len(calls) == 2
+
+
+def test_force_analysis_ignores_current_cache(tmp_path) -> None:
+    audio = tmp_path / "music.m4a"
+    audio.write_bytes(b"audio")
+    calls: list[list[str]] = []
+
+    def runner(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if command[0] == "ffprobe":
+            output = '{"streams":[{"sample_rate":"48000"}]}'
+            return subprocess.CompletedProcess(command, 0, output, "")
+        return subprocess.CompletedProcess(command, 0, "0 48000 0.1 0.1 0.8\n", "")
+
+    analyzer = make_analyzer(tmp_path / "analysis", runner)
+    track = make_track(audio)
+
+    analyzer.analyze(track)
+    analyzer.analyze(track, force=True)
+
+    assert len(calls) == 4

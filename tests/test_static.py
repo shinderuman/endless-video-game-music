@@ -56,9 +56,13 @@ def test_player_has_keyboard_accessible_panel_resizers() -> None:
 
 def test_player_has_full_track_seek_control() -> None:
     markup = player_markup()
+    script = static_asset("app.js")
 
     assert markup.elements["seek-bar"]["type"] == "range"
+    assert markup.elements["loop-seek-bar"]["type"] == "range"
     assert {"current-time", "total-time"} <= markup.elements.keys()
+    assert 'elements.loopSeekBar.addEventListener("input", seekLoopAudio)' in script
+    assert "candidate.loopEndSeconds" in script
 
 
 def test_music_refresh_shows_loading_state_and_disables_button() -> None:
@@ -74,14 +78,46 @@ def test_music_refresh_shows_loading_state_and_disables_button() -> None:
     assert "cursor: not-allowed" in stylesheet
 
 
-def test_loop_candidates_include_earliest_start_without_changing_default() -> None:
+def test_refined_loop_candidates_are_primary_and_rank_zero_is_default() -> None:
+    markup = player_markup()
     script = static_asset("app.js")
 
-    assert "analysis.candidates = withHeadLoopCandidate" in script
-    assert "analysis.headCandidate" in script
-    assert "isHeadLoop: true" in script
-    assert "state.candidateIndex = scoredCandidates.length > 0 ? 1 : 0" in script
-    assert "candidate.isHeadLoop ? 0 : state.candidateIndex" in script
+    assert "recommended-candidate-list" in markup.elements
+    assert "candidate-count" in markup.elements
+    assert "analysis.refinedCandidates" in script
+    assert "(candidate) => candidate.rank === 0" in script
+    assert "candidate.rank <= 0" in script
+    assert "candidate.rank > 0" in script
+    assert 'loopMusicEndpointPair: "位置調整"' in script
+    assert 'loopAuditioneerFiveSample: "つなぎ目優先"' in script
+    assert 'label.textContent = name' in script
+    assert "loopAudio.currentTime = 0" in script
+
+
+def test_selected_track_can_be_reanalyzed_with_loading_state() -> None:
+    markup = player_markup()
+    script = static_asset("app.js")
+    stylesheet = static_asset("styles.css")
+
+    assert markup.elements["reanalyze-track"]["disabled"] is None
+    assert 'api(`/api/tracks/${track.id}/reanalyze`' in script
+    assert "setReanalyzing(true)" in script
+    assert "elements.reanalyzeTrack.disabled = loading" in script
+    assert ".reanalyze-button.loading::before" in stylesheet
+
+
+def test_loop_playback_uses_web_audio_buffer_looping() -> None:
+    script = static_asset("app.js")
+    loop_player = static_asset("loop-audio-player.js")
+
+    assert 'import {LoopAudioPlayer} from "./loop-audio-player.js"' in script
+    assert "monitorLoop" not in script
+    assert "createBufferSource()" in loop_player
+    assert "source.loop = true" in loop_player
+    assert "source.loopStart = this.loopStart" in loop_player
+    assert "source.loopEnd = this.loopEnd" in loop_player
+    assert "loopAudio.play(true)" in script
+    assert "USER_RESUME_TIMEOUT_MS = 3_000" in loop_player
 
 
 def test_library_selection_and_searches_are_restored_without_autoplay() -> None:
@@ -95,4 +131,6 @@ def test_library_selection_and_searches_are_restored_without_autoplay() -> None:
     assert "playlistSearch: elements.playlistSearch.value" in script
     assert "albumSearch: elements.albumSearch.value" in script
     assert "trackSearch: elements.trackSearch.value" in script
-    assert "await selectTrack(restoredTrack.id, false)" in script
+    assert "await selectTrack(restoredTrack.id, false, true)" in script
+    assert "await playLoop(track, token, false, autoplay)" in script
+    assert "if (!shouldPlay)" in script

@@ -17,7 +17,11 @@ from endless_vgm.server import (
 
 
 class FakeAnalyzer:
-    def analyze(self, track) -> dict[str, object]:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, bool]] = []
+
+    def analyze(self, track, *, force: bool = False) -> dict[str, object]:
+        self.calls.append((track.id, force))
         return {"trackId": track.id, "candidateCount": 0, "candidates": []}
 
 
@@ -43,6 +47,10 @@ def test_range_parser() -> None:
 def test_track_route() -> None:
     track_id = "a" * 24
     assert _track_route(f"/api/tracks/{track_id}/audio") == (track_id, "audio")
+    assert _track_route(f"/api/tracks/{track_id}/reanalyze") == (
+        track_id,
+        "reanalyze",
+    )
     assert _track_route("/api/tracks/not-an-id/audio") is None
 
 
@@ -73,9 +81,10 @@ def test_http_api_static_and_audio_range(tmp_path) -> None:
     (static / "index.html").write_text("<h1>Endless</h1>", encoding="utf-8")
     library = MusicLibrary(cache, tmp_path / "export.js", fallback_cache_path=tmp_path / "none")
     library.load()
+    analyzer = FakeAnalyzer()
     app = PlayerApplication(
         library=library,
-        analyzer=FakeAnalyzer(),
+        analyzer=analyzer,
         artwork=FakeArtwork(),
         static_dir=static,
     )
@@ -96,6 +105,11 @@ def test_http_api_static_and_audio_range(tmp_path) -> None:
             method="POST",
         )
         assert analysis["candidateCount"] == 0
+        request_json(
+            f"{base}/api/tracks/{track['id']}/reanalyze",
+            method="POST",
+        )
+        assert analyzer.calls == [(track["id"], False), (track["id"], True)]
 
         range_request = urllib.request.Request(
             f"{base}{track['audioUrl']}",

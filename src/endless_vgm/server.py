@@ -143,11 +143,16 @@ class PlayerRequestHandler(BaseHTTPRequestHandler):
             )
             return
         track_route = _track_route(parsed.path)
-        if track_route is not None and track_route[1] == "analyze":
+        if track_route is not None and track_route[1] in {"analyze", "reanalyze"}:
             track = self.server.app.library.track(track_route[0])
             if track is None:
                 raise FileNotFoundError("Track not found")
-            self._send_json(self.server.app.analyzer.analyze(track))
+            self._send_json(
+                self.server.app.analyzer.analyze(
+                    track,
+                    force=track_route[1] == "reanalyze",
+                )
+            )
             return
         self._send_json({"error": "Endpoint not found"}, HTTPStatus.NOT_FOUND)
 
@@ -226,7 +231,10 @@ class PlayerRequestHandler(BaseHTTPRequestHandler):
 
 
 def _track_route(path: str) -> tuple[str, str] | None:
-    match = re.fullmatch(r"/api/tracks/([0-9a-f]{24})/(audio|artwork|analyze)", path)
+    match = re.fullmatch(
+        r"/api/tracks/([0-9a-f]{24})/(audio|artwork|analyze|reanalyze)",
+        path,
+    )
     return (match.group(1), match.group(2)) if match else None
 
 

@@ -1,3 +1,5 @@
+import {LoopAudioPlayer} from "./loop-audio-player.js";
+
 const FADE_SECONDS = 4;
 const MAX_LOOP_CANDIDATES = 20;
 const PANEL_WIDTH_STORAGE_KEY = "endless-vgm-panel-widths";
@@ -7,7 +9,8 @@ const PANEL_WIDTHS = {
   album: {property: "--album-width", min: 200, max: 640},
   track: {property: "--track-width", min: 360, max: 900},
 };
-const audio = new Audio();
+const mediaAudio = new Audio();
+const loopAudio = new LoopAudioPlayer();
 const state = {
   playlists: [],
   albums: [],
@@ -55,14 +58,15 @@ const elements = {
   totalTime: document.querySelector("#total-time"),
   modeNormal: document.querySelector("#mode-normal"),
   modeLoop: document.querySelector("#mode-loop"),
-  candidatePrev: document.querySelector("#candidate-prev"),
-  candidateNext: document.querySelector("#candidate-next"),
+  recommendedCandidateList: document.querySelector("#recommended-candidate-list"),
   candidatePicker: document.querySelector("#candidate-picker"),
+  candidateCount: document.querySelector("#candidate-count"),
   candidatePanel: document.querySelector("#candidate-panel"),
   candidateList: document.querySelector("#candidate-list"),
   candidateLabel: document.querySelector("#candidate-label"),
   candidateScore: document.querySelector("#candidate-score"),
-  loopProgress: document.querySelector("#loop-progress"),
+  reanalyzeTrack: document.querySelector("#reanalyze-track"),
+  loopSeekBar: document.querySelector("#loop-seek-bar"),
   loopStart: document.querySelector("#loop-start"),
   loopEnd: document.querySelector("#loop-end"),
   shuffle: document.querySelector("#shuffle"),
@@ -89,6 +93,7 @@ const api = async (url, options = {}) => {
 };
 
 const currentTrack = () => state.tracks.find((track) => track.id === state.currentTrackId);
+const activeAudio = () => state.mode === "loop" ? loopAudio : mediaAudio;
 
 const formatTime = (seconds) => {
   if (!Number.isFinite(seconds)) {
@@ -97,6 +102,18 @@ const formatTime = (seconds) => {
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
 };
+
+const refinementLabel = (method) => ({
+  pmlDurationLocalWaveform: "標準",
+  loopMusicEndpointPair: "位置調整",
+  loopAuditioneerFiveSample: "つなぎ目優先",
+})[method] ?? "波形補正";
+
+const refinementDescription = (method) => ({
+  pmlDurationLocalWaveform: "終端を波形で補正",
+  loopMusicEndpointPair: "開始と終端を同時調整",
+  loopAuditioneerFiveSample: "境界直前を細かく比較",
+})[method] ?? "波形を再比較";
 
 const setMessage = (message) => {
   elements.playerMessage.textContent = message;
@@ -110,15 +127,12 @@ const initialize = async () => {
   restorePanelWidths();
   restoreLibraryState();
   bindEvents();
-  audio.addEventListener("ended", () => playAdjacent(1));
-  audio.addEventListener("durationchange", renderSeek);
-  audio.addEventListener("loadedmetadata", renderSeek);
-  audio.addEventListener("timeupdate", () => {
-    enforceLoop();
-    renderProgress();
-  });
-  audio.addEventListener("error", () => {
-    if (audio.src) {
+  mediaAudio.addEventListener("ended", () => playAdjacent(1));
+  mediaAudio.addEventListener("durationchange", renderSeek);
+  mediaAudio.addEventListener("loadedmetadata", renderSeek);
+  mediaAudio.addEventListener("timeupdate", renderProgress);
+  mediaAudio.addEventListener("error", () => {
+    if (mediaAudio.src) {
       setMessage("音声ファイルを再生できませんでした。");
     }
   });
@@ -153,12 +167,12 @@ const bindEvents = () => {
     saveLibraryState();
   });
   elements.seekBar.addEventListener("input", seekAudio);
+  elements.loopSeekBar.addEventListener("input", seekLoopAudio);
   elements.refreshLibrary.addEventListener("click", refreshLibrary);
   elements.modeNormal.addEventListener("click", () => setMode("normal"));
   elements.modeLoop.addEventListener("click", () => setMode("loop"));
-  elements.candidatePrev.addEventListener("click", () => changeCandidate(-1));
-  elements.candidateNext.addEventListener("click", () => changeCandidate(1));
   elements.candidatePicker.addEventListener("click", toggleCandidatePanel);
+  elements.reanalyzeTrack.addEventListener("click", reanalyzeCurrentTrack);
   elements.previous.addEventListener("click", () => playAdjacent(-1));
   elements.next.addEventListener("click", () => playAdjacent(1));
   elements.playPause.addEventListener("click", togglePlayback);
@@ -388,8 +402,8 @@ const selectPlaylist = async (name, restoring = false) => {
   const restoredTrack = state.tracks.find(
     (track) => track.id === state.currentTrackId && track.available,
   );
-  if (restoring && restoredTrack && !audio.src) {
-    await selectTrack(restoredTrack.id, false);
+  if (restoring && restoredTrack && !mediaAudio.src && !loopAudio.buffer) {
+    await selectTrack(restoredTrack.id, false, true);
   } else {
     saveLibraryState();
   }
@@ -551,7 +565,7 @@ const resetTrackLimit = () => {
   renderTracks();
 };
 
-const selectTrack = async (trackId, autoplay) => {
+const selectTrack = async (trackId, autoplay, prepare = false) => {
   const track = state.tracks.find((candidate) => candidate.id === trackId);
   if (!track || !track.available) {
     setMessage("ローカル音声ファイルが見つかりません。");
@@ -565,14 +579,14 @@ const selectTrack = async (trackId, autoplay) => {
   saveLibraryState();
   updateTrackDetails(track);
   renderTracks();
-  if (!autoplay) {
+  if (!autoplay && !prepare) {
     return;
   }
   try {
     if (state.mode === "normal") {
-      await playNormal(track);
+      await playNormal(track, autoplay);
     } else {
-      await playLoop(track, token);
+      await playLoop(track, token, false, autoplay);
     }
   } catch (error) {
     if (token === state.requestToken) {
@@ -593,6 +607,7 @@ const updateTrackDetails = (track) => {
   elements.seekBar.disabled = true;
   elements.currentTime.textContent = "現在 0:00";
   elements.totalTime.textContent = "全長 —";
+  elements.reanalyzeTrack.disabled = false;
   if (track.artworkUrl) {
     elements.artwork.onload = () => {
       elements.artwork.hidden = false;
@@ -609,20 +624,33 @@ const updateTrackDetails = (track) => {
 
 const resetCandidateDisplay = () => {
   setCandidatePanel(false);
+  elements.recommendedCandidateList.replaceChildren();
   elements.candidateList.replaceChildren();
+  elements.candidateCount.textContent = "—";
+  elements.candidatePicker.disabled = true;
   elements.candidateLabel.textContent = "ループ候補 —";
   elements.candidateScore.textContent =
     state.mode === "loop" ? "解析待ち" : "通常再生では使用しません";
   elements.loopStart.textContent = "START —";
   elements.loopEnd.textContent = "END —";
-  elements.loopProgress.style.width = "0";
+  elements.loopSeekBar.value = "0";
+  elements.loopSeekBar.disabled = true;
 };
 
-const playNormal = async (track) => {
+const playNormal = async (track, shouldPlay = true) => {
   showAnalysis(false);
-  audio.src = track.audioUrl;
-  audio.volume = state.muted ? 0 : 1;
-  await audio.play();
+  loopAudio.clear();
+  mediaAudio.src = track.audioUrl;
+  mediaAudio.volume = state.muted ? 0 : 1;
+  if (!shouldPlay) {
+    mediaAudio.load();
+    state.playing = false;
+    updatePlayButton();
+    setMessage("再生の準備ができました。");
+    prefetchNext();
+    return;
+  }
+  await mediaAudio.play();
   state.playing = true;
   updatePlayButton();
   setMessage("通常再生中");
@@ -630,30 +658,28 @@ const playNormal = async (track) => {
   prefetchNext();
 };
 
-const playLoop = async (track, token) => {
+const playLoop = async (track, token, force = false, shouldPlay = true) => {
   showAnalysis(true);
   setMessage("PyMusicLooperでループ位置を解析しています。");
-  audio.src = track.audioUrl;
-  audio.volume = 0;
-  try {
-    await audio.play();
-    audio.pause();
-    audio.currentTime = 0;
-  } catch (error) {
-    if (error.name !== "NotAllowedError") {
-      throw error;
-    }
-  }
-  const analysis = await (
-    await api(`/api/tracks/${track.id}/analyze`, {method: "POST"})
-  ).json();
+  mediaAudio.pause();
+  mediaAudio.removeAttribute("src");
+  mediaAudio.load();
+  await loopAudio.prepare();
+  const [analysisResponse, audioLoaded] = await Promise.all([
+    api(
+      `/api/tracks/${track.id}/${force ? "reanalyze" : "analyze"}`,
+      {method: "POST"},
+    ),
+    loopAudio.load(track.audioUrl),
+  ]);
+  const analysis = await analysisResponse.json();
   const scoredCandidates = analysis.candidates.slice(0, MAX_LOOP_CANDIDATES);
   analysis.candidateCount = scoredCandidates.length;
-  analysis.candidates = withHeadLoopCandidate(
-    analysis.headCandidate,
-    scoredCandidates,
-  );
-  if (token !== state.requestToken) {
+  analysis.candidates = [
+    ...(analysis.refinedCandidates ?? []),
+    ...scoredCandidates,
+  ];
+  if (token !== state.requestToken || !audioLoaded) {
     return;
   }
   showAnalysis(false);
@@ -663,12 +689,33 @@ const playLoop = async (track, token) => {
     await playNormal(track);
     return;
   }
-  state.candidateIndex = scoredCandidates.length > 0 ? 1 : 0;
-  audio.volume = state.muted ? 0 : 1;
+  state.candidateIndex = analysis.candidates.findIndex(
+    (candidate) => candidate.rank === 0,
+  );
+  if (state.candidateIndex < 0) {
+    state.candidateIndex = analysis.candidates.findIndex(
+      (candidate) => candidate.rank === 1,
+    );
+  }
+  if (state.candidateIndex < 0) {
+    state.candidateIndex = 0;
+  }
+  const candidate = analysis.candidates[state.candidateIndex];
+  loopAudio.setLoop(candidate.loopStartSeconds, candidate.loopEndSeconds);
+  loopAudio.currentTime = 0;
+  loopAudio.volume = state.muted ? 0 : 1;
   renderCandidate();
   prefetchNext();
+  if (!shouldPlay) {
+    state.playing = false;
+    setMessage(
+      `推奨候補と${analysis.candidateCount}件の補助候補を読み込みました。`,
+    );
+    updatePlayButton();
+    return;
+  }
   try {
-    await audio.play();
+    await loopAudio.play();
     state.playing = true;
     setMessage(`${analysis.candidateCount}件の候補をスコア順に読み込みました。`);
     scheduleTransition();
@@ -684,27 +731,39 @@ const playLoop = async (track, token) => {
   updatePlayButton();
 };
 
-const withHeadLoopCandidate = (headCandidate, candidates) => {
-  if (!headCandidate) {
-    return candidates;
-  }
-  return [
-    {
-      ...headCandidate,
-      isHeadLoop: true,
-    },
-    ...candidates,
-  ];
-};
-
-const enforceLoop = () => {
-  if (state.mode !== "loop" || !state.analysis?.candidates.length) {
+const reanalyzeCurrentTrack = async () => {
+  const track = currentTrack();
+  if (!track || elements.reanalyzeTrack.disabled) {
     return;
   }
-  const candidate = state.analysis.candidates[state.candidateIndex];
-  if (audio.currentTime >= candidate.loopEndSeconds - 0.04) {
-    audio.currentTime = candidate.loopStartSeconds;
+  const token = ++state.requestToken;
+  setReanalyzing(true);
+  state.analysis = null;
+  state.candidateIndex = 0;
+  try {
+    if (state.mode === "loop") {
+      stopPlayback();
+      await playLoop(track, token, true);
+    } else {
+      showAnalysis(true);
+      setMessage("ループ位置を再解析しています。");
+      await api(`/api/tracks/${track.id}/reanalyze`, {method: "POST"});
+      showAnalysis(false);
+      setMessage("再解析しました。ループ再生に切り替えると結果を読み込みます。");
+    }
+  } catch (error) {
+    showAnalysis(false);
+    setMessage(`再解析できませんでした: ${error.message}`);
+  } finally {
+    setReanalyzing(false);
   }
+};
+
+const setReanalyzing = (loading) => {
+  elements.reanalyzeTrack.disabled = loading || !currentTrack();
+  elements.reanalyzeTrack.classList.toggle("loading", loading);
+  elements.reanalyzeTrack.setAttribute("aria-busy", String(loading));
+  elements.reanalyzeTrack.textContent = loading ? "解析中" : "再解析";
 };
 
 const stopPlayback = () => {
@@ -712,9 +771,10 @@ const stopPlayback = () => {
   window.clearTimeout(state.nextTimer);
   state.transitionTimer = null;
   state.nextTimer = null;
-  audio.pause();
-  audio.removeAttribute("src");
-  audio.load();
+  loopAudio.clear();
+  mediaAudio.pause();
+  mediaAudio.removeAttribute("src");
+  mediaAudio.load();
   state.playing = false;
   updatePlayButton();
 };
@@ -728,9 +788,10 @@ const togglePlayback = async () => {
     }
     return;
   }
+  const audio = activeAudio();
   if (audio.paused) {
     try {
-      await audio.play();
+      await (audio === loopAudio ? loopAudio.play(true) : mediaAudio.play());
       state.playing = true;
       scheduleTransition();
     } catch (error) {
@@ -764,16 +825,6 @@ const setMode = async (mode) => {
   }
 };
 
-const changeCandidate = async (delta) => {
-  const candidates = state.analysis?.candidates;
-  const track = currentTrack();
-  if (!track || !candidates?.length || state.mode !== "loop") {
-    return;
-  }
-  const index = (state.candidateIndex + delta + candidates.length) % candidates.length;
-  selectCandidate(index, false);
-};
-
 const renderCandidate = () => {
   const candidates = state.analysis?.candidates;
   if (!candidates?.length) {
@@ -781,19 +832,19 @@ const renderCandidate = () => {
     return;
   }
   const candidate = candidates[state.candidateIndex];
-  const candidateNumber = candidate.isHeadLoop ? 0 : state.candidateIndex;
-  elements.candidateLabel.textContent =
-    `ループ候補 ${candidateNumber} / ${state.analysis.candidateCount}`;
-  elements.candidateScore.textContent = candidate.isHeadLoop
-    ? `先頭に最も近い候補・スコア ${candidate.score.toFixed(6)}`
-    : `スコア ${candidate.score.toFixed(6)}（高い順）`;
+  elements.candidateLabel.textContent = candidate.rank <= 0
+    ? refinementLabel(candidate.method)
+    : `PyMusicLooper候補 ${candidate.rank}`;
+  elements.candidateScore.textContent = candidate.rank <= 0
+    ? `${refinementLabel(candidate.method)}・一致度 ${candidate.score.toFixed(6)}`
+    : `PyMusicLooperスコア ${candidate.score.toFixed(6)}（高い順）`;
   elements.loopStart.textContent = `START ${formatTime(candidate.loopStartSeconds)}`;
   elements.loopEnd.textContent = `END ${formatTime(candidate.loopEndSeconds)}`;
   renderCandidateList();
 };
 
 const toggleCandidatePanel = () => {
-  if (!state.analysis?.candidates.length) {
+  if (!state.analysis?.candidates.some((candidate) => candidate.rank > 0)) {
     return;
   }
   setCandidatePanel(elements.candidatePanel.hidden);
@@ -810,7 +861,9 @@ const selectCandidate = (index, closePanel) => {
     return;
   }
   state.candidateIndex = index;
-  audio.currentTime = candidates[index].loopStartSeconds;
+  const candidate = candidates[index];
+  loopAudio.setLoop(candidate.loopStartSeconds, candidate.loopEndSeconds);
+  loopAudio.currentTime = 0;
   renderCandidate();
   scheduleTransition();
   if (closePanel) {
@@ -820,17 +873,46 @@ const selectCandidate = (index, closePanel) => {
 
 const renderCandidateList = () => {
   const candidates = state.analysis?.candidates ?? [];
+  const recommended = candidates
+    .map((candidate, index) => ({candidate, index}))
+    .filter(({candidate}) => candidate.rank <= 0);
+  const auxiliary = candidates
+    .map((candidate, index) => ({candidate, index}))
+    .filter(({candidate}) => candidate.rank > 0);
+  elements.recommendedCandidateList.replaceChildren(
+    ...recommended.map(({candidate, index}) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className =
+        `recommended-candidate${index === state.candidateIndex ? " active" : ""}`;
+      const name = refinementLabel(candidate.method);
+      button.title = `${name}のループ位置を選び、曲の先頭から再生します`;
+      button.setAttribute("aria-label", `${name}のループ候補を選択`);
+      const label = document.createElement("strong");
+      label.textContent = name;
+      const method = document.createElement("span");
+      method.textContent = refinementDescription(candidate.method);
+      const times = document.createElement("small");
+      times.textContent =
+        `${formatTime(candidate.loopStartSeconds)} → ${formatTime(candidate.loopEndSeconds)}`;
+      button.append(label, method, times);
+      button.addEventListener("click", () => selectCandidate(index, false));
+      return button;
+    }),
+  );
+  elements.candidateCount.textContent = `${auxiliary.length}件`;
+  elements.candidatePicker.disabled = auxiliary.length === 0;
   elements.candidateList.replaceChildren(
-    ...candidates.map((candidate, index) => {
+    ...auxiliary.map(({candidate, index}) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className =
         `candidate-option${index === state.candidateIndex ? " active" : ""}`;
-      const candidateNumber = candidate.isHeadLoop ? 0 : index;
-      button.title = `候補${candidateNumber}のループ位置へ切り替えます`;
-      button.setAttribute("aria-label", `ループ候補${candidateNumber}を選択`);
+      button.title =
+        `PyMusicLooper候補${candidate.rank}を選び、曲の先頭から再生します`;
+      button.setAttribute("aria-label", `ループ候補${candidate.rank}を選択`);
       const label = document.createElement("strong");
-      label.textContent = `候補 ${candidateNumber}`;
+      label.textContent = `候補 ${candidate.rank}`;
       const score = document.createElement("span");
       score.textContent = candidate.score.toFixed(6);
       const times = document.createElement("small");
@@ -845,23 +927,22 @@ const renderCandidateList = () => {
 
 const renderProgress = () => {
   renderSeek();
+  const audio = activeAudio();
   const candidates = state.analysis?.candidates;
   if (state.mode !== "loop" || !candidates?.length) {
-    if (audio.duration) {
-      elements.loopProgress.style.width = `${(audio.currentTime / audio.duration) * 100}%`;
-    }
+    elements.loopSeekBar.value = "0";
+    elements.loopSeekBar.disabled = true;
     return;
   }
   const candidate = candidates[state.candidateIndex];
-  const duration = candidate.loopEndSeconds - candidate.loopStartSeconds;
-  const elapsed = audio.currentTime;
-  const position = elapsed < candidate.loopStartSeconds
-    ? elapsed / candidate.loopEndSeconds
-    : (elapsed - candidate.loopStartSeconds) % duration / duration;
-  elements.loopProgress.style.width = `${Math.max(0, Math.min(position * 100, 100))}%`;
+  const position = audio.currentTime / candidate.loopEndSeconds;
+  elements.loopSeekBar.disabled = false;
+  elements.loopSeekBar.value =
+    String(Math.round(Math.max(0, Math.min(position, 1)) * 1000));
 };
 
 const renderSeek = () => {
+  const audio = activeAudio();
   const duration = Number.isFinite(audio.duration)
     ? audio.duration
     : state.analysis?.durationSeconds;
@@ -875,6 +956,7 @@ const renderSeek = () => {
 };
 
 const seekAudio = () => {
+  const audio = activeAudio();
   const duration = Number.isFinite(audio.duration)
     ? audio.duration
     : state.analysis?.durationSeconds;
@@ -882,6 +964,16 @@ const seekAudio = () => {
     return;
   }
   audio.currentTime = Number(elements.seekBar.value) / 1000 * duration;
+  renderProgress();
+};
+
+const seekLoopAudio = () => {
+  const candidate = state.analysis?.candidates[state.candidateIndex];
+  if (!candidate || state.mode !== "loop") {
+    return;
+  }
+  loopAudio.currentTime =
+    Number(elements.loopSeekBar.value) / 1000 * candidate.loopEndSeconds;
   renderProgress();
 };
 
@@ -913,7 +1005,8 @@ const toggleShuffle = () => {
 
 const toggleMute = () => {
   state.muted = !state.muted;
-  audio.volume = state.muted ? 0 : 1;
+  mediaAudio.volume = state.muted ? 0 : 1;
+  loopAudio.volume = state.muted ? 0 : 1;
   elements.mute.classList.toggle("active", state.muted);
   elements.mute.textContent = state.muted ? "○" : "◕";
   elements.mute.title = state.muted ? "消音を解除します" : "音を消します";
@@ -934,6 +1027,7 @@ const fadeAndNext = () => {
     return;
   }
   const started = performance.now();
+  const audio = activeAudio();
   const fade = () => {
     const progress = Math.min((performance.now() - started) / (FADE_SECONDS * 1000), 1);
     audio.volume = state.muted ? 0 : 1 - progress;

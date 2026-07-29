@@ -620,38 +620,121 @@ select {
   background: rgba(255, 255, 255, 0.035);
 }
 
-.candidate-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 10px;
+.candidate-summary {
   text-align: center;
 }
 
-.candidate-row strong,
-.candidate-row span {
+.candidate-summary strong,
+.candidate-summary span {
   display: block;
 }
 
-.candidate-picker {
-  min-width: 0;
-  padding: 4px 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-}
-
-.candidate-picker:hover,
-.candidate-picker[aria-expanded="true"] {
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.candidate-row strong {
+.candidate-summary strong {
   font-size: 11px;
 }
 
-.candidate-row span {
+.candidate-summary span {
   margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.recommended-candidate-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 11px;
+}
+
+.recommended-candidate {
+  min-width: 0;
+  padding: 8px 6px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.035);
+  text-align: center;
+}
+
+.recommended-candidate:hover {
+  border-color: rgba(255, 79, 147, 0.5);
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.recommended-candidate.active {
+  border-color: var(--accent);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 79, 147, 0.2),
+    rgba(143, 91, 255, 0.16)
+  );
+  box-shadow: 0 0 0 1px rgba(255, 79, 147, 0.14);
+}
+
+.recommended-candidate strong,
+.recommended-candidate span,
+.recommended-candidate small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recommended-candidate strong {
+  color: #fff;
+  font-size: 10px;
+}
+
+.recommended-candidate span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.recommended-candidate small {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 8px;
+}
+
+.candidate-picker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.candidate-picker::after {
+  margin-left: auto;
+  padding-left: 7px;
+  color: rgba(255, 255, 255, 0.46);
+  content: "⌄";
+}
+
+.candidate-picker:hover:not(:disabled),
+.candidate-picker[aria-expanded="true"] {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.candidate-picker[aria-expanded="true"]::after {
+  content: "⌃";
+}
+
+.candidate-picker:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.candidate-picker small {
+  margin-left: 7px;
   color: var(--muted);
   font-size: 9px;
 }
@@ -701,26 +784,59 @@ select {
   font-size: 10px;
 }
 
+.reanalyze-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 78px;
+  margin: 10px auto 0;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.reanalyze-button:hover:not(:disabled) {
+  border-color: rgba(255, 79, 147, 0.5);
+  color: #fff;
+}
+
+.reanalyze-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.reanalyze-button.loading::before {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  content: "";
+}
+
 .candidate-option span,
 .candidate-option small {
   color: var(--muted);
   font-size: 9px;
 }
 
-.loop-timeline {
+.loop-seek-bar {
+  display: block;
+  width: 100%;
   height: 4px;
   margin-top: 12px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
-.loop-progress {
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  transition: width 0.15s linear;
+.loop-seek-bar:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .loop-times {

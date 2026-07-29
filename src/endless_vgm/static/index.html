@@ -178,43 +178,52 @@
           </div>
 
           <div class="loop-card">
-            <div class="candidate-row">
-              <button
-                id="candidate-prev"
-                class="round-button small"
-                type="button"
-                aria-label="前の候補"
-                title="1つ前のループ候補へ切り替えます"
-              >‹</button>
-              <button
-                id="candidate-picker"
-                class="candidate-picker"
-                type="button"
-                aria-expanded="false"
-                aria-controls="candidate-panel"
-                title="ループ候補一覧を開いて直接選択します"
-              >
-                <strong id="candidate-label">ループ候補 —</strong>
-                <span id="candidate-score">曲を選択すると解析します</span>
-              </button>
-              <button
-                id="candidate-next"
-                class="round-button small"
-                type="button"
-                aria-label="次の候補"
-                title="1つ次のループ候補へ切り替えます"
-              >›</button>
+            <div class="candidate-summary">
+              <strong id="candidate-label">ループ候補 —</strong>
+              <span id="candidate-score">曲を選択すると解析します</span>
             </div>
+            <div
+              id="recommended-candidate-list"
+              class="recommended-candidate-list"
+              role="group"
+              aria-label="推奨ループ候補"
+            ></div>
+            <button
+              id="candidate-picker"
+              class="candidate-picker"
+              type="button"
+              aria-expanded="false"
+              aria-controls="candidate-panel"
+              title="PyMusicLooperのスコア上位候補を開きます"
+            >
+              <span>その他の候補</span>
+              <small id="candidate-count">—</small>
+            </button>
             <div id="candidate-panel" class="candidate-panel" hidden>
               <div id="candidate-list" class="candidate-list"></div>
             </div>
-            <div class="loop-timeline">
-              <div id="loop-progress" class="loop-progress"></div>
-            </div>
+            <input
+              id="loop-seek-bar"
+              class="loop-seek-bar"
+              type="range"
+              min="0"
+              max="1000"
+              value="0"
+              disabled
+              aria-label="ループ範囲の再生位置"
+              title="0秒から選択中のループ終端までの再生位置を移動します"
+            >
             <div class="loop-times">
               <span id="loop-start">START —</span>
               <span id="loop-end">END —</span>
             </div>
+            <button
+              id="reanalyze-track"
+              class="reanalyze-button"
+              type="button"
+              disabled
+              title="選択中の曲のキャッシュを破棄し、ループ位置をもう一度解析します"
+            >再解析</button>
           </div>
 
           <div class="transport">
@@ -273,6 +282,6 @@
         </section>
       </main>
     </div>
-    <script type="module" src="/app.js?v=17"></script>
+    <script type="module" src="/app.js?v=22"></script>
   </body>
 </html>

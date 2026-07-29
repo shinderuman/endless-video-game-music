@@ -9,11 +9,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from .boundary import RefinedLoopBoundary, find_refined_loop_boundaries
 from .models import Track
 
 LOGGER = logging.getLogger(__name__)
 MAX_LOOP_CANDIDATES = 20
-ANALYSIS_CACHE_VERSION = 2
+ANALYSIS_CACHE_VERSION = 7
+
+BoundaryFinder = Callable[
+    [Path, int, int, int],
+    list[RefinedLoopBoundary],
+]
 
 
 @dataclass(frozen=True)
@@ -51,13 +57,15 @@ class LoopAnalyzer:
         cache_dir: Path,
         *,
         command_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+        boundary_finder: BoundaryFinder = find_refined_loop_boundaries,
     ) -> None:
         self.cache_dir = cache_dir
         self.command_runner = command_runner
+        self.boundary_finder = boundary_finder
         self._locks: dict[str, threading.Lock] = {}
         self._locks_guard = threading.Lock()
 
-    def analyze(self, track: Track) -> dict[str, object]:
+    def analyze(self, track: Track, *, force: bool = False) -> dict[str, object]:
         if not track.available or track.location is None:
             raise FileNotFoundError("The track does not have an available local audio file")
         source = track.location
@@ -65,9 +73,10 @@ class LoopAnalyzer:
         cache_path = self.cache_dir / f"{track.id}.json"
         lock = self._track_lock(track.id)
         with lock:
-            cached = _read_cache(cache_path, fingerprint)
-            if cached is not None:
-                return _limit_candidates(cached)
+            if not force:
+                cached = _read_cache(cache_path, fingerprint)
+                if cached is not None:
+                    return _limit_candidates(cached)
             result = self._run(track, fingerprint)
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             cache_path.write_text(
@@ -104,15 +113,12 @@ class LoopAnalyzer:
             fallback = f"PyMusicLooper failed with exit code {completed.returncode}"
             raise RuntimeError(message or fallback)
         candidates = parse_candidates(completed.stdout, sample_rate)
-        head_candidate = min(
-            candidates,
-            key=lambda candidate: (
-                candidate.loop_start_sample,
-                -candidate.score,
-            ),
-            default=None,
-        )
         candidates.sort(key=lambda candidate: candidate.score, reverse=True)
+        refined_candidates = (
+            self._refine_top_candidate(track.location, candidates[0])
+            if candidates
+            else []
+        )
         candidates = candidates[:MAX_LOOP_CANDIDATES]
         return {
             "analysisVersion": ANALYSIS_CACHE_VERSION,
@@ -120,13 +126,28 @@ class LoopAnalyzer:
             "source": fingerprint,
             "analysisDurationSeconds": time.monotonic() - started,
             "candidateCount": len(candidates),
-            "headCandidate": (
-                head_candidate.public_dict()
-                if head_candidate is not None
-                else None
-            ),
-            "candidates": [candidate.public_dict() for candidate in candidates],
+            "refinedCandidates": refined_candidates,
+            "candidates": [
+                {**candidate.public_dict(), "rank": rank}
+                for rank, candidate in enumerate(candidates, start=1)
+            ],
         }
+
+    def _refine_top_candidate(
+        self,
+        path: Path,
+        candidate: LoopCandidate,
+    ) -> list[dict[str, float | int | str]]:
+        refined = self.boundary_finder(
+            path,
+            candidate.loop_start_sample,
+            candidate.loop_end_sample,
+            candidate.sample_rate,
+        )
+        return [
+            boundary.public_dict(candidate.sample_rate)
+            for boundary in refined
+        ]
 
     def _track_lock(self, track_id: str) -> threading.Lock:
         with self._locks_guard:
