@@ -63,3 +63,14 @@ def test_refresh_library_mode_updates_cache_and_exits(monkeypatch, tmp_path) -> 
 
     assert calls == [(True, log_path)]
     assert "完了: 2プレイリスト" in log_path.read_text(encoding="utf-8")
+
+
+def test_default_host_binds_all_interfaces() -> None:
+    args = build_parser().parse_args([])
+    assert args.host == "0.0.0.0"
+
+
+def test_browser_host_substitutes_wildcard() -> None:
+    assert main_module._browser_host("0.0.0.0") == "127.0.0.1"
+    assert main_module._browser_host("127.0.0.1") == "127.0.0.1"
+    assert main_module._browser_host("192.168.1.5") == "192.168.1.5"

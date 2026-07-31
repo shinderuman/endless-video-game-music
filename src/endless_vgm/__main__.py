@@ -20,12 +20,16 @@ def _append_library_log(path: Path, message: str) -> None:
         output.write(f"{timestamp} {message}\n")
 
 
+def _browser_host(host: str) -> str:
+    return "127.0.0.1" if host == "0.0.0.0" else host
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="endless-vgm",
         description="Music.appのローカル音源を自動解析してループ再生します。",
     )
-    parser.add_argument("-H", "--host", default="127.0.0.1", help="listen host")
+    parser.add_argument("-H", "--host", default="0.0.0.0", help="listen host")
     parser.add_argument("-p", "--port", type=int, default=8765, help="listen port")
     parser.add_argument("-o", "--open-browser", action="store_true", help="open browser")
     parser.add_argument(
@@ -84,7 +88,7 @@ def main() -> None:
         static_dir=package_dir / "static",
     )
     server = PlayerServer((args.host, args.port), app)
-    url = f"http://{args.host}:{server.server_port}/"
+    url = f"http://{_browser_host(args.host)}:{server.server_port}/"
     if args.open_browser:
         threading.Timer(0.2, lambda: webbrowser.open(url)).start()
     logging.getLogger(__name__).info("Endless VGM is running at %s", url)

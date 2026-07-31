@@ -1,5 +1,5 @@
 UV ?= uv
-HOST ?= 127.0.0.1
+HOST ?= 0.0.0.0
 PORT ?= 8765
 LIBRARY_LOG ?= $(HOME)/Library/Caches/Endless Video Game Music/library-refresh.log
 
