@@ -115,9 +115,7 @@ class LoopAnalyzer:
         candidates = parse_candidates(completed.stdout, sample_rate)
         candidates.sort(key=lambda candidate: candidate.score, reverse=True)
         refined_candidates = (
-            self._refine_top_candidate(track.location, candidates[0])
-            if candidates
-            else []
+            self._refine_top_candidate(track.location, candidates[0]) if candidates else []
         )
         candidates = candidates[:MAX_LOOP_CANDIDATES]
         return {
@@ -144,10 +142,7 @@ class LoopAnalyzer:
             candidate.loop_end_sample,
             candidate.sample_rate,
         )
-        return [
-            boundary.public_dict(candidate.sample_rate)
-            for boundary in refined
-        ]
+        return [boundary.public_dict(candidate.sample_rate) for boundary in refined]
 
     def _track_lock(self, track_id: str) -> threading.Lock:
         with self._locks_guard:

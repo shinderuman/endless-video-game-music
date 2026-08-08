@@ -48,7 +48,7 @@ def test_loads_export_cache_and_builds_public_urls(tmp_path) -> None:
     assert track.name == "Opening"
     assert track.available is True
     assert len(track.id) == 24
-    assert track.public_dict()["audioUrl"] == f"/api/tracks/{track.id}/audio"
+    assert track.public_dict()["audioUrl"] == f"api/tracks/{track.id}/audio"
     assert library.track(track.id) == track
 
 

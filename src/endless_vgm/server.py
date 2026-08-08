@@ -5,16 +5,22 @@ import logging
 import mimetypes
 import re
 import shutil
+import socketserver
 from dataclasses import dataclass
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlsplit
+from socket import socket
+from typing import TYPE_CHECKING
+from urllib.parse import parse_qs, urlsplit
 
 from .albums import build_album_groups
-from .analysis import LoopAnalyzer
-from .artwork import ArtworkExporter, artwork_content_type
-from .library import MusicLibrary
+from .artwork import artwork_content_type
+
+if TYPE_CHECKING:
+    from .analysis import LoopAnalyzer
+    from .artwork import ArtworkExporter
+    from .library import MusicLibrary
 
 LOGGER = logging.getLogger(__name__)
 RANGE_PATTERN = re.compile(r"^bytes=(\d*)-(\d*)$")
@@ -25,19 +31,27 @@ class PlayerApplication:
     library: MusicLibrary
     analyzer: LoopAnalyzer
     artwork: ArtworkExporter
-    static_dir: Path
 
 
-class PlayerServer(ThreadingHTTPServer):
+class PlayerUnixServer(socketserver.ThreadingUnixStreamServer):
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], app: PlayerApplication) -> None:
+    def __init__(
+        self,
+        socket_path: str,
+        app: PlayerApplication,
+        *,
+        listener: socket | None = None,
+    ) -> None:
         self.app = app
-        super().__init__(address, PlayerRequestHandler)
+        super().__init__(socket_path, PlayerRequestHandler, bind_and_activate=listener is None)
+        if listener is not None:
+            self.socket.close()
+            self.socket = listener
 
 
 class PlayerRequestHandler(BaseHTTPRequestHandler):
-    server: PlayerServer
+    server: PlayerUnixServer
 
     def do_GET(self) -> None:
         try:
@@ -65,7 +79,7 @@ class PlayerRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"error": str(error)}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def log_message(self, format_: str, *args: object) -> None:
-        LOGGER.info("%s - %s", self.client_address[0], format_ % args)
+        LOGGER.info("local - %s", format_ % args)
 
     def _handle_get(self, *, head_only: bool = False) -> None:
         parsed = urlsplit(self.path)
@@ -100,8 +114,7 @@ class PlayerRequestHandler(BaseHTTPRequestHandler):
                     "name": playlist.name,
                     "tracks": [track.public_dict() for track in playlist.tracks],
                     "albums": [
-                        album.public_dict()
-                        for album in build_album_groups(playlist.tracks)
+                        album.public_dict() for album in build_album_groups(playlist.tracks)
                     ],
                 },
                 head_only=head_only,
@@ -131,7 +144,7 @@ class PlayerRequestHandler(BaseHTTPRequestHandler):
                     head_only=head_only,
                 )
                 return
-        self._send_static(parsed.path, head_only=head_only)
+        self._send_json({"error": "Endpoint not found"}, HTTPStatus.NOT_FOUND)
 
     def _handle_post(self) -> None:
         parsed = urlsplit(self.path)
@@ -148,17 +161,6 @@ class PlayerRequestHandler(BaseHTTPRequestHandler):
             )
             return
         self._send_json({"error": "Endpoint not found"}, HTTPStatus.NOT_FOUND)
-
-    def _send_static(self, request_path: str, *, head_only: bool) -> None:
-        relative = "index.html" if request_path in {"", "/"} else unquote(request_path.lstrip("/"))
-        candidate = (self.server.app.static_dir / relative).resolve()
-        static_root = self.server.app.static_dir.resolve()
-        if static_root not in candidate.parents and candidate != static_root:
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
-        if not candidate.is_file():
-            candidate = static_root / "index.html"
-        self._send_file(candidate, head_only=head_only, cache_control="no-cache")
 
     def _send_json(
         self,

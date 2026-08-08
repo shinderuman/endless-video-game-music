@@ -1,17 +1,16 @@
 from __future__ import annotations
 
+import contextlib
+import http.client
 import json
 import os
+import socket
 import threading
-import urllib.error
-import urllib.request
-
-import pytest
 
 from endless_vgm.library import MusicLibrary
 from endless_vgm.server import (
     PlayerApplication,
-    PlayerServer,
+    PlayerUnixServer,
     _parse_range,
     _track_route,
 )
@@ -31,10 +30,36 @@ class FakeArtwork:
         return None
 
 
-def request_json(url: str, *, method: str = "GET") -> dict[str, object]:
-    request = urllib.request.Request(url, method=method)
-    with urllib.request.urlopen(request) as response:
-        return json.loads(response.read())
+class UnixHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, socket_path: str) -> None:
+        super().__init__("localhost")
+        self.socket_path = socket_path
+
+    def connect(self) -> None:
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(self.socket_path)
+
+
+def request(
+    socket_path: str,
+    path: str,
+    *,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+) -> tuple[int, bytes, http.client.HTTPMessage]:
+    connection = UnixHTTPConnection(socket_path)
+    try:
+        connection.request(method, path, headers=headers or {})
+        response = connection.getresponse()
+        return response.status, response.read(), response.headers
+    finally:
+        connection.close()
+
+
+def request_json(socket_path: str, path: str, *, method: str = "GET") -> dict[str, object]:
+    status, body, _ = request(socket_path, path, method=method)
+    assert status == 200
+    return json.loads(body)
 
 
 def test_range_parser() -> None:
@@ -55,7 +80,7 @@ def test_track_route() -> None:
     assert _track_route("/api/tracks/not-an-id/audio") is None
 
 
-def test_http_api_static_and_audio_range(tmp_path) -> None:
+def test_http_api_over_local_web_socket(tmp_path) -> None:
     audio = tmp_path / "track.m4a"
     audio.write_bytes(b"0123456789")
     cache = tmp_path / "library.json"
@@ -77,9 +102,6 @@ def test_http_api_static_and_audio_range(tmp_path) -> None:
         ),
         encoding="utf-8",
     )
-    static = tmp_path / "static"
-    static.mkdir()
-    (static / "index.html").write_text("<h1>Endless</h1>", encoding="utf-8")
     library = MusicLibrary(cache, tmp_path / "export.js", fallback_cache_path=tmp_path / "none")
     library.load()
     analyzer = FakeAnalyzer()
@@ -87,47 +109,48 @@ def test_http_api_static_and_audio_range(tmp_path) -> None:
         library=library,
         analyzer=analyzer,
         artwork=FakeArtwork(),
-        static_dir=static,
     )
-    server = PlayerServer(("127.0.0.1", 0), app)
+    socket_path = f"/tmp/endless-vgm-test-{os.getpid()}.sock"
+    with contextlib.suppress(FileNotFoundError):
+        os.unlink(socket_path)
+    server = PlayerUnixServer(socket_path, app)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    base = f"http://127.0.0.1:{server.server_port}"
     try:
-        playlists = request_json(f"{base}/api/playlists")
+        playlists = request_json(socket_path, "/api/playlists")
         assert playlists["playlists"][0]["name"] == "GAME"
         assert playlists["playlists"][0]["isLibrary"] is False
-        playlist = request_json(f"{base}/api/playlist?name=GAME")
+        playlist = request_json(socket_path, "/api/playlist?name=GAME")
         track = playlist["tracks"][0]
         assert track["name"] == "Track"
         assert playlist["albums"][0]["trackIds"] == [track["id"]]
         analysis = request_json(
-            f"{base}/api/tracks/{track['id']}/analyze",
+            socket_path,
+            f"/api/tracks/{track['id']}/analyze",
             method="POST",
         )
         assert analysis["candidateCount"] == 0
         request_json(
-            f"{base}/api/tracks/{track['id']}/reanalyze",
+            socket_path,
+            f"/api/tracks/{track['id']}/reanalyze",
             method="POST",
         )
         assert analyzer.calls == [(track["id"], False), (track["id"], True)]
 
-        range_request = urllib.request.Request(
-            f"{base}{track['audioUrl']}",
+        status, body, headers = request(
+            socket_path,
+            f"/{track['audioUrl']}",
             headers={"Range": "bytes=2-5"},
         )
-        with urllib.request.urlopen(range_request) as response:
-            assert response.status == 206
-            assert response.read() == b"2345"
-            assert response.headers["Content-Range"] == "bytes 2-5/10"
+        assert status == 206
+        assert body == b"2345"
+        assert headers["Content-Range"] == "bytes 2-5/10"
 
-        with urllib.request.urlopen(f"{base}/missing-route") as response:
-            assert b"Endless" in response.read()
-            assert response.headers["Cache-Control"] == "no-cache"
+        status, _, _ = request(socket_path, "/api/playlist?name=UNKNOWN")
+        assert status == 404
 
-        with pytest.raises(urllib.error.HTTPError) as error:
-            urllib.request.urlopen(f"{base}/api/playlist?name=UNKNOWN")
-        assert error.value.code == 404
+        status, _, _ = request(socket_path, "/missing-route")
+        assert status == 404
 
         original_mtime = cache.stat().st_mtime_ns
         cache.write_text(
@@ -135,9 +158,11 @@ def test_http_api_static_and_audio_range(tmp_path) -> None:
             encoding="utf-8",
         )
         os.utime(cache, ns=(original_mtime + 1, original_mtime + 1))
-        updated = request_json(f"{base}/api/playlists")
+        updated = request_json(socket_path, "/api/playlists")
         assert [item["name"] for item in updated["playlists"]] == ["UPDATED"]
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(socket_path)

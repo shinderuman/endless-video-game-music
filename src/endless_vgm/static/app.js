@@ -215,7 +215,7 @@ const initialize = async () => {
     }
   });
   try {
-    const status = await (await api("/api/status")).json();
+    const status = await (await api("api/status")).json();
     elements.serverDot.classList.add("ready");
     elements.serverMessage.textContent = status.pymusiclooperAvailable
       ? "サーバー準備完了"
@@ -412,7 +412,7 @@ const resizePanelWithKeyboard = (event) => {
 };
 
 const loadPlaylists = async () => {
-  const payload = await (await api("/api/playlists")).json();
+  const payload = await (await api("api/playlists")).json();
   state.playlists = payload.playlists;
   elements.playlistCount.textContent = state.playlists.length;
   renderPlaylists();
@@ -464,7 +464,7 @@ const renderPlaylists = () => {
 };
 
 const selectPlaylist = async (name, restoring = false) => {
-  const payload = await (await api(`/api/playlist?name=${encodeURIComponent(name)}`)).json();
+  const payload = await (await api(`api/playlist?name=${encodeURIComponent(name)}`)).json();
   const playlistChanged = name !== state.currentPlaylist;
   state.currentPlaylist = name;
   state.tracks = payload.tracks;
@@ -819,7 +819,7 @@ const playLoop = async (track, token, force = false, shouldPlay = true) => {
   await loopAudio.prepare();
   const [analysisResponse, audioLoaded] = await Promise.all([
     api(
-      `/api/tracks/${track.id}/${force ? "reanalyze" : "analyze"}`,
+      `api/tracks/${track.id}/${force ? "reanalyze" : "analyze"}`,
       {method: "POST"},
     ),
     loopAudio.load(track.audioUrl),
@@ -899,7 +899,7 @@ const reanalyzeCurrentTrack = async () => {
     } else {
       showAnalysis(true);
       setMessage("ループ位置を再解析しています。");
-      await api(`/api/tracks/${track.id}/reanalyze`, {method: "POST"});
+      await api(`api/tracks/${track.id}/reanalyze`, {method: "POST"});
       showAnalysis(false);
       setMessage("再解析しました。ループ再生に切り替えると結果を読み込みます。");
     }
@@ -1199,7 +1199,7 @@ const prefetchNext = () => {
   const index = playable.findIndex((track) => track.id === state.currentTrackId);
   const next = playable[(index + 1) % playable.length];
   if (next && next.id !== state.currentTrackId) {
-    api(`/api/tracks/${next.id}/analyze`, {method: "POST"}).catch(() => {});
+    api(`api/tracks/${next.id}/analyze`, {method: "POST"}).catch(() => {});
   }
 };
 

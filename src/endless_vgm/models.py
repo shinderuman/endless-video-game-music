@@ -33,8 +33,8 @@ class Track:
             "discNumber": self.disc_number,
             "trackNumber": self.track_number,
             "available": self.available,
-            "audioUrl": f"/api/tracks/{self.id}/audio" if self.available else None,
-            "artworkUrl": f"/api/tracks/{self.id}/artwork" if self.available else None,
+            "audioUrl": f"api/tracks/{self.id}/audio" if self.available else None,
+            "artworkUrl": f"api/tracks/{self.id}/artwork" if self.available else None,
         }
 
 

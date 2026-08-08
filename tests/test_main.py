@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 from endless_vgm import __main__ as main_module
 from endless_vgm.__main__ import build_parser
 
@@ -8,11 +10,6 @@ from endless_vgm.__main__ import build_parser
 def test_short_command_line_options() -> None:
     args = build_parser().parse_args(
         [
-            "-H",
-            "0.0.0.0",
-            "-p",
-            "9000",
-            "-o",
             "-r",
             "-L",
             "/tmp/library.log",
@@ -20,9 +17,6 @@ def test_short_command_line_options() -> None:
         ]
     )
 
-    assert args.host == "0.0.0.0"
-    assert args.port == 9000
-    assert args.open_browser is True
     assert args.refresh_library is True
     assert args.library_log == Path("/tmp/library.log")
     assert args.verbose is True
@@ -64,13 +58,9 @@ def test_refresh_library_mode_updates_cache_and_exits(monkeypatch, tmp_path) -> 
     assert calls == [(True, log_path)]
     assert "完了: 2プレイリスト" in log_path.read_text(encoding="utf-8")
 
+def test_web_mode_requires_local_web_socket(monkeypatch) -> None:
+    monkeypatch.delenv("LOCAL_WEB_SOCKET", raising=False)
+    monkeypatch.setattr(sys, "argv", ["endless-vgm"])
 
-def test_default_host_binds_all_interfaces() -> None:
-    args = build_parser().parse_args([])
-    assert args.host == "0.0.0.0"
-
-
-def test_browser_host_substitutes_wildcard() -> None:
-    assert main_module._browser_host("0.0.0.0") == "127.0.0.1"
-    assert main_module._browser_host("127.0.0.1") == "127.0.0.1"
-    assert main_module._browser_host("192.168.1.5") == "192.168.1.5"
+    with pytest.raises(SystemExit):
+        main_module.main()

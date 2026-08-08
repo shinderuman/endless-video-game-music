@@ -60,3 +60,10 @@ def test_library_target_preserves_failure_status_with_stub(tmp_path) -> None:
 
     assert completed.returncode != 0
     assert "進捗 100%: スタブ完了" in completed.stdout
+
+
+def test_backend_launcher_exposes_app_and_homebrew_binaries() -> None:
+    launcher = Path("scripts/endless-vgm-backend").read_text(encoding="utf-8")
+
+    assert '$app_root/.venv/bin:/opt/homebrew/bin:/usr/local/bin:$PATH' in launcher
+    assert 'exec "$app_root/.venv/bin/python" -m endless_vgm' in launcher

@@ -8,9 +8,7 @@ import endless_vgm
 
 def export_script_helpers() -> str:
     package_dir = Path(endless_vgm.__file__).parent
-    source = (package_dir / "scripts" / "export_music_library.js").read_text(
-        encoding="utf-8"
-    )
+    source = (package_dir / "scripts" / "export_music_library.js").read_text(encoding="utf-8")
     return source.split("function run()", maxsplit=1)[0]
 
 

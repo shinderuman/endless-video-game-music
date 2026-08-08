@@ -147,9 +147,7 @@ def _find_matching_end(
     ):
         return None, 0.0
 
-    reference = mono[
-        loop_start_sample - half_window : loop_start_sample + half_window
-    ]
+    reference = mono[loop_start_sample - half_window : loop_start_sample + half_window]
     search_audio = mono[search_start - half_window : search_end + half_window]
     scores = _normalized_correlation(reference, search_audio)
     if scores.size == 0:
@@ -184,9 +182,7 @@ def _find_loopmusic_pair(
         endpoint_differences = np.maximum(endpoint_differences, differences)
 
     shortlist_size = min(PAIR_SHORTLIST_SIZE, starts.size)
-    shortlist = np.argpartition(endpoint_differences, shortlist_size - 1)[
-        :shortlist_size
-    ]
+    shortlist = np.argpartition(endpoint_differences, shortlist_size - 1)[:shortlist_size]
     context_radius = max(1, round(PAIR_CONTEXT_SECONDS * sample_rate / 2))
     best_index: int | None = None
     best_score = np.inf
@@ -298,11 +294,6 @@ def _normalized_correlation(reference: np.ndarray, search_audio: np.ndarray) -> 
         ones,
         mode="valid",
     )
-    window_energy = (
-        window_square_sum
-        - np.square(window_sum) / centered_reference.size
-    )
-    denominator = np.sqrt(
-        reference_energy * np.maximum(window_energy, 1e-12)
-    )
+    window_energy = window_square_sum - np.square(window_sum) / centered_reference.size
+    denominator = np.sqrt(reference_energy * np.maximum(window_energy, 1e-12))
     return correlation / denominator

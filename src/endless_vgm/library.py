@@ -318,12 +318,8 @@ def _track_numbers(
 ) -> tuple[int | None, int | None]:
     from .albums import parse_album_name
 
-    disc_number = _positive_int(
-        raw_track.get("disc_number") or raw_track.get("discNumber")
-    )
-    track_number = _positive_int(
-        raw_track.get("track_number") or raw_track.get("trackNumber")
-    )
+    disc_number = _positive_int(raw_track.get("disc_number") or raw_track.get("discNumber"))
+    track_number = _positive_int(raw_track.get("track_number") or raw_track.get("trackNumber"))
     album_info = parse_album_name(album)
     if disc_number is None and album_info is not None:
         disc_number = album_info.disc_number

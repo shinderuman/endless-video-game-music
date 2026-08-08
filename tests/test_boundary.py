@@ -79,18 +79,24 @@ def test_endpoint_pair_can_move_both_boundaries_without_changing_duration() -> N
 def test_refinement_rejects_invalid_or_silent_audio() -> None:
     silence = np.zeros((80_000, 2), dtype=np.float32)
 
-    assert find_refined_loop_boundaries_from_audio(
-        silence,
-        8_000,
-        8_000,
-        56_000,
-    ) == []
-    assert find_refined_loop_boundaries_from_audio(
-        silence,
-        8_000,
-        16_000,
-        8_000,
-    ) == []
+    assert (
+        find_refined_loop_boundaries_from_audio(
+            silence,
+            8_000,
+            8_000,
+            56_000,
+        )
+        == []
+    )
+    assert (
+        find_refined_loop_boundaries_from_audio(
+            silence,
+            8_000,
+            16_000,
+            8_000,
+        )
+        == []
+    )
 
 
 def test_refinement_requires_channel_separated_audio() -> None:

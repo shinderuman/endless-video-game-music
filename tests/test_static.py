@@ -35,6 +35,16 @@ def static_asset(name: str) -> str:
     return (package_dir / "static" / name).read_text(encoding="utf-8")
 
 
+def test_static_entrypoint_uses_app_relative_asset_urls() -> None:
+    markup = static_asset("index.html")
+
+    assert 'href="favicon.svg"' in markup
+    assert 'href="styles.css?v=6"' in markup
+    assert 'src="app.js?v=25"' in markup
+    assert 'href="/' not in markup
+    assert 'src="/' not in markup
+
+
 def test_player_has_four_panes() -> None:
     markup = player_markup()
 
@@ -135,7 +145,7 @@ def test_refined_loop_candidates_are_primary_and_rank_zero_is_default() -> None:
     assert "candidate.rank > 0" in script
     assert 'loopMusicEndpointPair: "位置調整"' in script
     assert 'loopAuditioneerFiveSample: "つなぎ目優先"' in script
-    assert 'label.textContent = name' in script
+    assert "label.textContent = name" in script
     assert "loopAudio.currentTime = 0" in script
 
 
@@ -145,7 +155,7 @@ def test_selected_track_can_be_reanalyzed_with_loading_state() -> None:
     stylesheet = static_asset("styles.css")
 
     assert markup.elements["reanalyze-track"]["disabled"] is None
-    assert 'api(`/api/tracks/${track.id}/reanalyze`' in script
+    assert "api(`api/tracks/${track.id}/reanalyze`" in script
     assert "setReanalyzing(true)" in script
     assert "elements.reanalyzeTrack.disabled = loading" in script
     assert ".reanalyze-button.loading::before" in stylesheet

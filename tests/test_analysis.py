@@ -100,24 +100,17 @@ def test_analyze_limits_candidates_to_top_twenty(tmp_path) -> None:
         if command[0] == "ffprobe":
             output = '{"streams":[{"sample_rate":"48000"}]}'
             return subprocess.CompletedProcess(command, 0, output, "")
-        output = "\n".join(
-            f"{index} {index + 48000} 0.1 0.1 {index / 100}"
-            for index in range(25)
-        )
+        output = "\n".join(f"{index} {index + 48000} 0.1 0.1 {index / 100}" for index in range(25))
         return subprocess.CompletedProcess(command, 0, output, "")
 
-    result = make_analyzer(tmp_path / "analysis", runner).analyze(
-        make_track(audio)
-    )
+    result = make_analyzer(tmp_path / "analysis", runner).analyze(make_track(audio))
 
     assert result["candidateCount"] == 20
     assert len(result["candidates"]) == 20
     assert result["candidates"][0]["score"] == 0.24
     assert result["candidates"][-1]["score"] == 0.05
     assert result["refinedCandidates"][0]["loopStartSeconds"] == 24 / 48_000
-    assert result["refinedCandidates"][0]["loopEndSeconds"] == (
-        24 + 48_000
-    ) / 48_000
+    assert result["refinedCandidates"][0]["loopEndSeconds"] == (24 + 48_000) / 48_000
     assert result["refinedCandidates"][0]["score"] == 0.8
 
 

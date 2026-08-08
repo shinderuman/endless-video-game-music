@@ -7,6 +7,7 @@ Music.appのプレイリストやアルバムを、そのままChromeから選�
 ## 動作環境
 
 - macOSとMusic.app
+- [Local Web App Server](../local-web-app-server)
 - Python 3.12以上
 - [uv](https://docs.astral.sh/uv/)
 - FFmpeg（`ffmpeg`と`ffprobe`）
@@ -20,22 +21,23 @@ Music.appに登録されたローカル音源ファイルを再生します。
 brew install uv ffmpeg
 make setup
 make library
-make open
+make install
 ```
 
-`make open`は既定で `http://127.0.0.1:8765/` を開きます。サーバーは既定ですべての
-ネットワークインターフェース（`0.0.0.0`）でリッスンするため、同じLAN内の別デバイスからも
-`http://<このMacのIPアドレス>:8765/` でアクセスできます。ローカルだけに制限する場合は
-`make run HOST=127.0.0.1` を使います。サーバーを起動する場合は次を使います。
+`make install` はアプリを Local Web App Server にインストールし、ホストを再起動して
+`http://127.0.0.1:8766/apps/endless-vgm/` を開きます。アプリ一覧は
+`http://127.0.0.1:8766/` です。
+
+インストール済みアプリとホストを再起動する場合:
 
 ```sh
 make run
 ```
 
-ポートを変更する場合:
+ブラウザだけを開く場合:
 
 ```sh
-make run PORT=9000
+make open
 ```
 
 `make library`はMusic.appの全ライブラリと全プレイリストをキャッシュへ一括取得します。
@@ -62,6 +64,9 @@ Music.appの操作を許可してください。Music.appの内容を更新し�
 ```sh
 make doctor  # 外部依存を確認
 make library # Music.appライブラリを更新
+make install # Local Web App Serverへインストールして起動
+make run     # Local Web App Serverを再起動
+make stop    # Local Web App Serverを停止
 make test    # pytest
 make lint    # ruff
 make format  # ruff format
