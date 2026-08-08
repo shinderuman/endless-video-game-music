@@ -13,6 +13,7 @@ from .server import PlayerApplication, PlayerUnixServer
 LoopAnalyzer = None
 ArtworkExporter = None
 MusicLibrary = None
+LibraryWatchdog = None
 
 
 def _append_library_log(path: Path, message: str) -> None:
@@ -44,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    global ArtworkExporter, LoopAnalyzer, MusicLibrary
+    global ArtworkExporter, LoopAnalyzer, MusicLibrary, LibraryWatchdog
 
     parser = build_parser()
     args = parser.parse_args()
@@ -75,12 +76,17 @@ def main() -> None:
         from .library import MusicLibrary as music_library
 
         MusicLibrary = music_library
+    if LibraryWatchdog is None:
+        from .watchdog import LibraryWatchdog as library_watchdog
+
+        LibraryWatchdog = library_watchdog
 
     package_dir = Path(__file__).resolve().parent
     cache_root = Path.home() / "Library" / "Caches" / "Endless Video Game Music"
     library = MusicLibrary(
         cache_root / "library.json",
         package_dir / "scripts" / "export_music_library.js",
+        manifest_script=package_dir / "scripts" / "export_playlist_manifest.js",
     )
     if args.refresh_library:
         log_path = args.library_log or cache_root / "library-refresh.log"
@@ -111,12 +117,15 @@ def main() -> None:
     assert socket_path is not None
     assert listener is not None
     server = PlayerUnixServer(socket_path, app, listener=listener)
+    watchdog = LibraryWatchdog(library)
+    watchdog.start()
     logging.getLogger(__name__).info("Endless VGM backend is ready")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        watchdog.stop()
         server.server_close()
         if socket_path:
             with contextlib.suppress(FileNotFoundError):

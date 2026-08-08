@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
 import json
 import logging
@@ -9,7 +11,7 @@ import sys
 import threading
 import time
 import unicodedata
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -116,17 +118,23 @@ class MusicLibrary:
         export_script: Path,
         *,
         fallback_cache_path: Path = MUSIC_BRIDGE_CACHE,
+        manifest_script: Path | None = None,
         command_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
         progress_runner: Callable[..., subprocess.CompletedProcess[str]] = (
             run_command_with_progress
         ),
+        manifest_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     ) -> None:
         self.cache_path = cache_path
         self.export_script = export_script
         self.fallback_cache_path = fallback_cache_path
+        self.manifest_script = manifest_script
         self.command_runner = command_runner
         self.progress_runner = progress_runner
+        self.manifest_runner = manifest_runner
         self._lock = threading.RLock()
+        self._lock_path = cache_path.with_suffix(cache_path.suffix + ".lock")
+        self._fingerprint_path = cache_path.with_suffix(cache_path.suffix + ".fingerprint")
         self._playlists: dict[str, Playlist] = {}
         self._tracks: dict[str, Track] = {}
         self._loaded_source: Path | None = None
@@ -171,45 +179,173 @@ class MusicLibrary:
         *,
         show_progress: bool = False,
         progress_log_path: Path | None = None,
+        fingerprint: str | None = None,
     ) -> None:
-        command = ["osascript", "-l", "JavaScript", str(self.export_script)]
-        if show_progress:
-            result = self.progress_runner(
-                command,
-                timeout=3600,
-                log_path=progress_log_path,
+        # Inter-process lock shared by the watchdog (auto) and `make library`
+        # (manual). Both construct MusicLibrary against the same cache path, so
+        # they share this lock file and never run the slow export concurrently.
+        with self._inter_process_lock():
+            # Skip only when another process provably already refreshed the cache
+            # to this exact fingerprint: library.json must be present and parse as
+            # a valid cache, and the sidecar must match. Anything less certain
+            # fails open (refresh again); an update is never silently dropped.
+            if (
+                fingerprint is not None
+                and self._cache_is_loadable()
+                and self._read_sidecar() == fingerprint
+            ):
+                self.load()
+                LOGGER.info(
+                    "Skipped Music.app refresh; cache already reflects fingerprint %s",
+                    fingerprint,
+                )
+                return
+            # Invalidate the sidecar BEFORE exporting or touching the data. While
+            # it is empty no observer can falsely skip against a stale value, so a
+            # crash or failure below can never leave fresh data described by an old
+            # fingerprint. If this write fails we abort with the data untouched and
+            # still consistent with the sidecar.
+            self._invalidate_sidecar()
+            command = ["osascript", "-l", "JavaScript", str(self.export_script)]
+            if show_progress:
+                result = self.progress_runner(
+                    command,
+                    timeout=3600,
+                    log_path=progress_log_path,
+                )
+            else:
+                result = self.command_runner(
+                    command,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=3600,
+                )
+            if result.returncode != 0:
+                stdout = result.stdout.strip()
+                stderr = (result.stderr or "").strip()
+                LOGGER.error(
+                    "Music.app export failed with exit code %d\nstdout: %s\nstderr: %s",
+                    result.returncode,
+                    stdout,
+                    stderr,
+                )
+                detail = stderr or stdout or f"osascript exited with code {result.returncode}"
+                raise RuntimeError(detail)
+            payload = json.loads(result.stdout)
+            if fingerprint is None:
+                # Manual path: derive the fingerprint now. On failure we leave the
+                # sidecar empty (invalidated above) so the next caller fail-opens.
+                fingerprint = self._safe_manifest_fingerprint()
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+            # Write the data first, then sync in-memory state to what is on disk.
+            self._atomic_write_text(
+                self.cache_path,
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             )
-        else:
-            result = self.command_runner(
-                command,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=3600,
-            )
+            self._replace_from_payload(payload)
+            # Publish the matching sidecar only after the data is durable. If this
+            # write fails the sidecar stays empty, which fail-opens the next caller
+            # (an extra refresh); it never claims a state the data does not have.
+            self._publish_sidecar(fingerprint)
+            with self._lock:
+                self._loaded_source = self.cache_path
+                self._loaded_mtime_ns = self.cache_path.stat().st_mtime_ns
+
+    def read_manifest(self) -> list[dict[str, Any]]:
+        """Read the lightweight playlist manifest from Music.app.
+
+        Raises on any Music.app/osascript failure so the caller can keep the
+        previous baseline instead of acting on partial data.
+        """
+        if self.manifest_script is None:
+            raise RuntimeError("playlist manifest script is not configured")
+        result = self.manifest_runner(
+            ["osascript", "-l", "JavaScript", str(self.manifest_script)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
         if result.returncode != 0:
-            stdout = result.stdout.strip()
             stderr = (result.stderr or "").strip()
-            LOGGER.error(
-                "Music.app export failed with exit code %d\nstdout: %s\nstderr: %s",
-                result.returncode,
-                stdout,
-                stderr,
-            )
+            stdout = result.stdout.strip()
             detail = stderr or stdout or f"osascript exited with code {result.returncode}"
             raise RuntimeError(detail)
-        payload = json.loads(result.stdout)
-        self._replace_from_payload(payload)
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = self.cache_path.with_suffix(f"{self.cache_path.suffix}.tmp")
-        temporary_path.write_text(
-            json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-            encoding="utf-8",
-        )
-        temporary_path.replace(self.cache_path)
-        with self._lock:
-            self._loaded_source = self.cache_path
-            self._loaded_mtime_ns = self.cache_path.stat().st_mtime_ns
+        return _unwrap_manifest(json.loads(result.stdout))
+
+    @contextlib.contextmanager
+    def _inter_process_lock(self) -> Iterator[None]:
+        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+        handle = self._lock_path.open("a+", encoding="utf-8")
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
+
+    def _read_sidecar(self) -> str | None:
+        """Fingerprint recorded for the current cache, or None if absent/invalid.
+
+        None means "not proven", so callers refresh rather than risk skipping.
+        """
+        try:
+            value = self._fingerprint_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        if len(value) != 64:
+            return None
+        try:
+            int(value, 16)
+        except ValueError:
+            return None
+        return value
+
+    def _cache_is_loadable(self) -> bool:
+        if not self.cache_path.is_file():
+            return False
+        try:
+            _unwrap_playlists(json.loads(self.cache_path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            return False
+        return True
+
+    def _atomic_write_text(self, path: Path, content: str) -> None:
+        temporary_path = path.with_suffix(f"{path.suffix}.tmp")
+        temporary_path.write_text(content, encoding="utf-8")
+        temporary_path.replace(path)
+
+    def _invalidate_sidecar(self) -> None:
+        # Must succeed before the data changes. A crash between the data write and
+        # a failed invalidation would otherwise leave fresh data paired with a
+        # stale sidecar; raising here keeps the on-disk data consistent with the
+        # sidecar so the caller can simply retry.
+        self._atomic_write_text(self._fingerprint_path, "")
+
+    def _publish_sidecar(self, fingerprint: str | None) -> None:
+        try:
+            self._atomic_write_text(self._fingerprint_path, fingerprint or "")
+        except OSError as error:
+            # The data is already durable and the sidecar was invalidated, so the
+            # worst case is an empty sidecar: the next caller fail-opens. Do not
+            # let a sidecar hiccup negate a successful refresh.
+            LOGGER.warning("Could not publish playlist fingerprint sidecar: %s", error)
+
+    def _safe_manifest_fingerprint(self) -> str | None:
+        if self.manifest_script is None:
+            return None
+        try:
+            return playlist_fingerprint(self.read_manifest())
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            json.JSONDecodeError,
+            ValueError,
+            RuntimeError,
+        ) as error:
+            LOGGER.warning("Could not read playlist manifest for fingerprint: %s", error)
+            return None
 
     def playlists(self) -> tuple[Playlist, ...]:
         with self._lock:
@@ -235,6 +371,35 @@ class MusicLibrary:
         with self._lock:
             self._playlists = playlists
             self._tracks = tracks
+
+
+def playlist_fingerprint(manifest: list[dict[str, Any]]) -> str:
+    """Deterministic fingerprint of user-managed playlist structure.
+
+    Playlists are normalized to a stable order (by persistent ID) so the
+    fingerprint is independent of Music.app's enumeration order. Track order is
+    preserved, so reordering or swapping tracks changes the fingerprint. Only
+    identity (persistent ID), name and ordered track persistent IDs participate:
+    metadata-only edits are intentionally not detected.
+    """
+    rows: list[str] = []
+    for playlist in sorted(manifest, key=lambda item: _text(item.get("id"))):
+        playlist_id = _text(playlist.get("id"))
+        name = _text(playlist.get("name"))
+        raw_tracks = playlist.get("tracks")
+        track_ids = (
+            [str(_text(value)) for value in raw_tracks]
+            if isinstance(raw_tracks, list)
+            else []
+        )
+        rows.append("\t".join([playlist_id, name, ",".join(track_ids)]))
+    return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest()
+
+
+def _unwrap_manifest(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, list):
+        raise ValueError("playlist manifest must be a JSON array")
+    return [item for item in payload if isinstance(item, dict)]
 
 
 def _unwrap_playlists(payload: Any) -> list[dict[str, Any]]:

@@ -26,7 +26,7 @@ def test_refresh_library_mode_updates_cache_and_exits(monkeypatch, tmp_path) -> 
     calls: list[tuple[bool, Path | None]] = []
 
     class FakeLibrary:
-        def __init__(self, *_: object) -> None:
+        def __init__(self, *args: object, **kwargs: object) -> None:
             pass
 
         def refresh(
