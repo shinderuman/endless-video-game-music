@@ -71,7 +71,7 @@ build-app:
 	cp src/endless_vgm/static/* "$(DISTDIR)/web/"
 	cp scripts/endless-vgm-backend "$(DISTDIR)/bin/endless-vgm"
 	chmod 0755 "$(DISTDIR)/bin/endless-vgm"
-	$(UV) sync --project "$(DISTDIR)" --no-dev
+	$(UV) sync --project "$(DISTDIR)" --no-dev --no-install-project
 
 start:
 	@"$(SERVER_BINARY)" --stop || true

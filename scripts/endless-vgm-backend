@@ -4,5 +4,7 @@ set -eu
 app_root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 PATH="$app_root/.venv/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 export PATH
+PYTHONPATH="$app_root/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
 
 exec "$app_root/.venv/bin/python" -m endless_vgm
